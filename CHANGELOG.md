@@ -1,6 +1,19 @@
 # Changelog
 
 
+## 0.4.1 (2026-01-08)
+
+### Changed
+
+- **PyPI package renamed to `yaml-dast`** (install: `pip install yaml-dast`, import: `import ydst`)
+- README clarified project vs package naming
+- `!setdefault` moved to Core features section in README
+
+### Fixed
+
+- Corrected GitHub URLs in pyproject.toml (mandersogit, not manders2k)
+
+
 ## 0.4.0 (2026-01-08)
 
 ### Breaking changes

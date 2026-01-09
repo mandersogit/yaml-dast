@@ -1,6 +1,8 @@
-# ydst — YAML data-structure templates
+# yaml-dast — YAML Data Structure Templates
 
-`ydst` is a small Python library that loads YAML into a *template object graph* and renders it into a
+**Install:** `pip install yaml-dast` · **Import:** `import ydst`
+
+A Python library that loads YAML into a *template object graph* and renders it into a
 concrete Python data structure (dict/list/scalars) using a small set of YAML tags.
 
 This is **data-structure templating** (not text templating): the output preserves types.
@@ -12,6 +14,7 @@ This is **data-structure templating** (not text templating): the output preserve
 - `!foreach` — generate lists/dicts/sets by iteration
 - `!omit` — remove keys/items from output
 - `!default` — coalesce-ish defaulting with configurable missingness semantics
+- `!setdefault` — define default values for variables in the render scope
 - `!expr` — evaluate restricted Python expressions (AST-based)
 - `!call` — call named functions from a user-provided registry
 - `!pipe` — compose transformations
@@ -22,11 +25,10 @@ This is **data-structure templating** (not text templating): the output preserve
 
 These tags are **disabled by default** and intended for **trusted templates only**:
 
-- `!setdefault` — define a default for one or more variables into the render-time local scope
 - `!python` — execute embedded Python and emit a value into the template output
 - `!python_module` — define helper functions/constants in a shared module scope
 
-Enable them via `RenderOptions` (or CLI flags) when you control the template source.
+Enable them via `RenderOptions(allow_python=True)` or CLI flags when you control the template source.
 
 ## Documentation
 
