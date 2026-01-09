@@ -4,7 +4,7 @@
 #   make test       - Run all tests
 #   make test-cov   - Run tests with coverage report
 #   make lint       - Run ruff linter
-#   make typecheck  - Run mypy type checker
+#   make typecheck  - Run mypy and pyright type checkers
 #   make all        - Run lint, typecheck, and tests
 #   make clean      - Remove build artifacts
 #
@@ -22,7 +22,7 @@ help:
 	@echo "  make test       Run all tests"
 	@echo "  make test-cov   Run tests with coverage report"
 	@echo "  make lint       Run ruff linter"
-	@echo "  make typecheck  Run mypy type checker"
+	@echo "  make typecheck  Run mypy and pyright type checkers"
 	@echo "  make all        Run lint, typecheck, and tests"
 	@echo "  make clean      Remove build artifacts"
 	@echo ""
@@ -44,9 +44,10 @@ test-cov:
 lint:
 	$(PYTHON_EXE) -m ruff check ydst/ tests/ scripts/
 
-# Type check with mypy
+# Type check with mypy and pyright
 typecheck:
 	$(PYTHON_EXE) -m mypy ydst/ tests/ scripts/ --ignore-missing-imports
+	$(PYTHON_EXE) -m pyright ydst/
 
 # Run all checks
 all: lint typecheck test
@@ -58,6 +59,7 @@ clean:
 	rm -rf *.egg-info/
 	rm -rf .pytest_cache/
 	rm -rf .mypy_cache/
+	rm -rf .pyright/
 	rm -rf .ruff_cache/
 	rm -rf coverage_html/
 	rm -rf .coverage

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yaml-dast"
-version = "0.4.1"
+version = "0.5.0"
 description = "YAML data-structure templates: render YAML into concrete Python data using structured template tags."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -42,6 +42,7 @@ dev = [
   "pytest>=7.0",
   "pytest-cov>=4.0",
   "mypy>=1.0",
+  "pyright>=1.1",
   "ruff>=0.1.0",
   "click>=8.0",  # for commit-helper script
   "types-PyYAML>=6.0",  # type stubs for mypy
@@ -70,3 +71,9 @@ ydst = ["py.typed"]
 # Strict mode for better type safety
 strict = false
 ignore_missing_imports = true
+
+[tool.pyright]
+include = ["ydst"]
+pythonVersion = "3.11"
+typeCheckingMode = "standard"
+reportMissingModuleSource = false  # PyYAML has no source
