@@ -3,6 +3,8 @@
 import pytest as _pytest
 
 import ydst as _ydst
+import ydst.errors as _errors
+import ydst.registry as _registry
 
 
 class TestPythonBasic:
@@ -12,25 +14,25 @@ class TestPythonBasic:
         eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text('x: !python "emit(42)"')
         with _pytest.raises(_ydst.RenderError) as cm:
-            eng.render(tmpl)
+            tmpl.render()
         assert "disabled" in str(cm.value).lower()
 
     def test_python_disabled_in_locked_down_mode(self) -> None:
         eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text('x: !python "emit(42)"')
         with _pytest.raises(_ydst.RenderError):
-            eng.render(tmpl, options=_ydst.RenderOptions(mode="locked_down", allow_python=True))
+            tmpl.render(options=_ydst.RenderOptions(mode="locked_down", allow_python=True))
 
     def test_python_explicit_emit(self) -> None:
         eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text('x: !python "emit(42)"')
-        out = eng.render(tmpl, options=_ydst.RenderOptions(allow_python=True))
+        out = tmpl.render(options=_ydst.RenderOptions(allow_python=True))
         assert out == {"x": 42}
 
     def test_python_implicit_emit_trailing_expression(self) -> None:
         eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text('x: !python "40 + 2"')
-        out = eng.render(tmpl, options=_ydst.RenderOptions(allow_python=True))
+        out = tmpl.render(options=_ydst.RenderOptions(allow_python=True))
         assert out == {"x": 42}
 
     def test_python_implicit_emit_multiline(self) -> None:
@@ -43,7 +45,7 @@ x: !python |
   a + b
 """
         )
-        out = eng.render(tmpl, options=_ydst.RenderOptions(allow_python=True))
+        out = tmpl.render(options=_ydst.RenderOptions(allow_python=True))
         assert out == {"x": 42}
 
     def test_python_no_trailing_expression_returns_none(self) -> None:
@@ -54,14 +56,14 @@ x: !python |
   a = 42
 """
         )
-        out = eng.render(tmpl, options=_ydst.RenderOptions(allow_python=True))
+        out = tmpl.render(options=_ydst.RenderOptions(allow_python=True))
         assert out == {"x": None}
 
     def test_python_strict_emit_requires_explicit_emit(self) -> None:
         eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text('x: !python "42"')
-        with _pytest.raises(_ydst.PythonEmitError):
-            eng.render(tmpl, options=_ydst.RenderOptions(allow_python=True, python_strict_emit=True))
+        with _pytest.raises(_errors.PythonEmitError):
+            tmpl.render(options=_ydst.RenderOptions(allow_python=True, python_strict_emit=True))
 
     def test_python_strict_emit_per_node(self) -> None:
         eng = _ydst.TemplateEngine()
@@ -72,13 +74,13 @@ x: !python
   strict_emit: true
 """
         )
-        with _pytest.raises(_ydst.PythonEmitError):
-            eng.render(tmpl, options=_ydst.RenderOptions(allow_python=True))
+        with _pytest.raises(_errors.PythonEmitError):
+            tmpl.render(options=_ydst.RenderOptions(allow_python=True))
 
     def test_python_access_scope_variables(self) -> None:
         eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text('x: !python "emit(foo * 2)"')
-        out = eng.render(tmpl, context={"foo": 21}, options=_ydst.RenderOptions(allow_python=True))
+        out = tmpl.render( context={"foo": 21}, options=_ydst.RenderOptions(allow_python=True))
         assert out == {"x": 42}
 
     def test_python_emit_omit(self) -> None:
@@ -89,14 +91,14 @@ a: !python "emit(OMIT)"
 b: 1
 """
         )
-        out = eng.render(tmpl, options=_ydst.RenderOptions(allow_python=True))
+        out = tmpl.render(options=_ydst.RenderOptions(allow_python=True))
         assert out == {"b": 1}
 
     def test_python_syntax_error_raises(self) -> None:
         eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text('x: !python "if True"')  # incomplete
-        with _pytest.raises(_ydst.PythonError):
-            eng.render(tmpl, options=_ydst.RenderOptions(allow_python=True))
+        with _pytest.raises(_errors.PythonError):
+            tmpl.render(options=_ydst.RenderOptions(allow_python=True))
 
 
 class TestPythonModule:
@@ -106,14 +108,14 @@ class TestPythonModule:
         eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text('- !python_module "x = 1"')
         with _pytest.raises(_ydst.RenderError) as cm:
-            eng.render(tmpl)
+            tmpl.render()
         assert "disabled" in str(cm.value).lower()
 
     def test_python_module_disabled_in_locked_down_mode(self) -> None:
         eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text('- !python_module "x = 1"')
         with _pytest.raises(_ydst.RenderError):
-            eng.render(tmpl, options=_ydst.RenderOptions(mode="locked_down", allow_python_module=True))
+            tmpl.render(options=_ydst.RenderOptions(mode="locked_down", allow_python_module=True))
 
     def test_python_module_returns_omit(self) -> None:
         eng = _ydst.TemplateEngine()
@@ -124,7 +126,7 @@ setup: !python_module "helper = 1"
 x: 42
 """
         )
-        out = eng.render(tmpl, options=_ydst.RenderOptions(allow_python_module=True))
+        out = tmpl.render(options=_ydst.RenderOptions(allow_python_module=True))
         # setup key is omitted
         assert out == {"x": 42}
 
@@ -139,10 +141,9 @@ setup: !python_module |
 x: !expr "double(21)"
 """
         )
-        out = eng.render(
-            tmpl,
+        out = tmpl.render(
             options=_ydst.RenderOptions(allow_python_module=True),
-            registry=_ydst.default_registry(),
+            registry=_registry.default_registry(),
         )
         assert out == {"x": 42}
 
@@ -156,7 +157,7 @@ setup: !python_module |
 x: !call {fn: triple, args: [14]}
 """
         )
-        out = eng.render(tmpl, options=_ydst.RenderOptions(allow_python_module=True))
+        out = tmpl.render(options=_ydst.RenderOptions(allow_python_module=True))
         assert out == {"x": 42}
 
     def test_python_module_defines_function_for_pipe(self) -> None:
@@ -171,7 +172,7 @@ x: !pipe
   - add_ten
 """
         )
-        out = eng.render(tmpl, options=_ydst.RenderOptions(allow_python_module=True))
+        out = tmpl.render(options=_ydst.RenderOptions(allow_python_module=True))
         assert out == {"x": 42}
 
 
@@ -195,8 +196,7 @@ items: !foreach
       emit({"price": price, "running_total": total})
 """
         )
-        out = eng.render(
-            tmpl,
+        out = tmpl.render(
             context={"prices": [10, 20, 30]},
             options=_ydst.RenderOptions(allow_python=True, allow_python_module=True),
         )
@@ -227,11 +227,10 @@ items: !foreach
     value: !expr "x"
 """
         )
-        out = eng.render(
-            tmpl,
+        out = tmpl.render(
             context={"data": ["a", "b", "c"]},
             options=_ydst.RenderOptions(allow_python_module=True),
-            registry=_ydst.default_registry(),
+            registry=_registry.default_registry(),
         )
         assert out["items"] == \
             [
@@ -251,7 +250,7 @@ setup: !python |
 x: !var computed
 """
         )
-        out = eng.render(tmpl, options=_ydst.RenderOptions(allow_python=True))
+        out = tmpl.render(options=_ydst.RenderOptions(allow_python=True))
         assert out == {"x": 42}
 
 
@@ -263,7 +262,7 @@ class TestSetDefault:
         eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text('setup: !setdefault {env: prod}')
         with _pytest.raises(_ydst.RenderError) as cm:
-            eng.render(tmpl, options=_ydst.RenderOptions(allow_setdefault=False))
+            tmpl.render(options=_ydst.RenderOptions(allow_setdefault=False))
         assert "disabled" in str(cm.value).lower()
 
     def test_setdefault_basic(self) -> None:
@@ -274,7 +273,7 @@ setup: !setdefault {env: prod}
 env: !var env
 """
         )
-        out = eng.render(tmpl, options=_ydst.RenderOptions(allow_setdefault=True))
+        out = tmpl.render(options=_ydst.RenderOptions(allow_setdefault=True))
         assert out == {"env": "prod"}
 
     def test_setdefault_does_not_override_caller_value(self) -> None:
@@ -286,8 +285,7 @@ setup: !setdefault {env: prod}
 env: !var env
 """
         )
-        out = eng.render(
-            tmpl,
+        out = tmpl.render(
             context={"env": "dev"},
             options=_ydst.RenderOptions(allow_setdefault=True),
         )
@@ -304,7 +302,7 @@ env: !var env
 region: !var region
 """
         )
-        out = eng.render(tmpl, options=_ydst.RenderOptions(allow_setdefault=True))
+        out = tmpl.render(options=_ydst.RenderOptions(allow_setdefault=True))
         assert out == {"env": "prod", "region": "us-east-1"}
 
     def test_setdefault_partial_override(self) -> None:
@@ -319,8 +317,7 @@ env: !var env
 region: !var region
 """
         )
-        out = eng.render(
-            tmpl,
+        out = tmpl.render(
             context={"env": "dev"},
             options=_ydst.RenderOptions(allow_setdefault=True),
         )
@@ -335,7 +332,7 @@ setup: !setdefault {x: 42}
 x: !var x
 """
         )
-        out = eng.render(tmpl, options=_ydst.RenderOptions(mode="locked_down"))
+        out = tmpl.render(options=_ydst.RenderOptions(mode="locked_down"))
         assert out == {"x": 42}
 
 
@@ -353,7 +350,7 @@ class TestOmitFiltering:
 - 2
 """
         )
-        out = eng.render(tmpl)
+        out = tmpl.render()
         assert out == [1, 2]
 
     def test_omit_from_python_filtered_from_list(self) -> None:
@@ -366,7 +363,7 @@ class TestOmitFiltering:
 - 2
 """
         )
-        out = eng.render(tmpl, options=_ydst.RenderOptions(allow_python=True))
+        out = tmpl.render(options=_ydst.RenderOptions(allow_python=True))
         assert out == [1, 2]
 
     def test_setdefault_filtered_from_list(self) -> None:
@@ -378,7 +375,7 @@ class TestOmitFiltering:
 - value: !var x
 """
         )
-        out = eng.render(tmpl)
+        out = tmpl.render()
         assert out == [{"value": 42}]
 
     def test_python_module_filtered_from_list(self) -> None:
@@ -390,7 +387,7 @@ class TestOmitFiltering:
 - x: 42
 """
         )
-        out = eng.render(tmpl, options=_ydst.RenderOptions(allow_python_module=True))
+        out = tmpl.render(options=_ydst.RenderOptions(allow_python_module=True))
         assert out == [{"x": 42}]
 
 
@@ -402,12 +399,12 @@ class TestExprDictAttributeRemoval:
         eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text('x: !expr "d.foo"')
         # Should raise AttributeError because dicts don't have a "foo" attribute
-        with _pytest.raises(_ydst.ExpressionError):
-            eng.render(tmpl, context={"d": {"foo": 42}}, registry=_ydst.default_registry())
+        with _pytest.raises(_errors.ExpressionError):
+            tmpl.render( context={"d": {"foo": 42}}, registry=_registry.default_registry())
 
     def test_dict_subscript_still_works(self) -> None:
         """x["key"] still works for dict access."""
         eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text('x: !expr "d[\'foo\']"')
-        out = eng.render(tmpl, context={"d": {"foo": 42}}, registry=_ydst.default_registry())
+        out = tmpl.render( context={"d": {"foo": 42}}, registry=_registry.default_registry())
         assert out == {"x": 42}

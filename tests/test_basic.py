@@ -3,6 +3,7 @@ import pathlib as _pathlib
 import tempfile as _tempfile
 
 import ydst as _ydst
+import ydst.errors as _errors
 import ydst.registry as _registry
 
 
@@ -19,17 +20,17 @@ c: !if
   else: !omit
 """
         )
-        out = eng.render(tmpl, context={"x": 2}, registry=_ydst.default_registry())
+        out = tmpl.render( context={"x": 2}, registry=_registry.default_registry())
         assert out == {"a": 1, "b": 2, "c": "yes"}
 
-        out2 = eng.render(tmpl, context={"x": 1}, registry=_ydst.default_registry())
+        out2 = tmpl.render( context={"x": 1}, registry=_registry.default_registry())
         assert out2 == {"a": 1, "b": 1}
 
     def test_root_omit_is_error(self) -> None:
         eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text("!omit")
-        with _pytest.raises(_ydst.RootOmitError):
-            eng.render(tmpl, context={}, registry=_ydst.default_registry())
+        with _pytest.raises(_errors.RootOmitError):
+            tmpl.render( context={}, registry=_registry.default_registry())
 
     def test_foreach_list(self) -> None:
         eng = _ydst.TemplateEngine()
@@ -41,7 +42,7 @@ items: !foreach
   template: !expr "t * 2"
 """
         )
-        out = eng.render(tmpl, context={"xs": [1, 2, 3]}, registry=_ydst.default_registry())
+        out = tmpl.render( context={"xs": [1, 2, 3]}, registry=_registry.default_registry())
         assert out["items"] == [2, 4, 6]
 
     def test_foreach_dict(self) -> None:
@@ -56,7 +57,7 @@ m: !foreach
   value: !expr "t * t"
 """
         )
-        out = eng.render(tmpl, context={"xs": [1, 2, 3]}, registry=_ydst.default_registry())
+        out = tmpl.render( context={"xs": [1, 2, 3]}, registry=_registry.default_registry())
         assert out["m"] == {1: 1, 2: 4, 3: 9}
 
     def test_foreach_allows_explicit_null_template_key_value(self) -> None:
@@ -69,7 +70,7 @@ x: !foreach
   template: null
 """
         )
-        assert eng.render(tmpl_list) == {"x": [None, None, None]}
+        assert tmpl_list.render() == {"x": [None, None, None]}
 
         tmpl_set = eng.load_template_text(
             """
@@ -79,7 +80,7 @@ x: !foreach
   template: null
 """
         )
-        assert eng.render(tmpl_set) == {"x": {None}}
+        assert tmpl_set.render() == {"x": {None}}
 
         tmpl_dict = eng.load_template_text(
             """
@@ -90,7 +91,7 @@ x: !foreach
   value: null
 """
         )
-        assert eng.render(tmpl_dict) == {"x": {None: None}}
+        assert tmpl_dict.render() == {"x": {None: None}}
 
     def test_call_and_pipe(self) -> None:
         eng = _ydst.TemplateEngine()
@@ -104,10 +105,10 @@ slug: !pipe
         )
 
         # Custom registry for truncate
-        reg = _ydst.default_registry()
+        reg = _registry.default_registry()
         reg.functions["truncate"] = lambda s, max_len=5: str(s)[:max_len]
 
-        out = eng.render(tmpl, context={"title": "Hello, World"}, registry=reg)
+        out = tmpl.render( context={"title": "Hello, World"}, registry=reg)
         assert out["slug"] == "hello"
 
     def test_load_time_include(self) -> None:
@@ -117,8 +118,8 @@ slug: !pipe
             (td_path / "b.yaml").write_text("y: !include a.yaml\n", encoding="utf-8")
 
             eng = _ydst.TemplateEngine(include_resolver=_ydst.FileIncludeResolver(search_paths=[td_path]))
-            tmpl = eng.load_template_file(td_path / "b.yaml")
-            out = eng.render(tmpl)
+            tmpl = eng.load_template_path(td_path / "b.yaml")
+            out = tmpl.render()
             assert out == {"y": {"x": 1}}
 
     def test_runtime_include(self) -> None:
@@ -128,8 +129,8 @@ slug: !pipe
             (td_path / "b.yaml").write_text("y: !include_rt a.yaml\n", encoding="utf-8")
 
             eng = _ydst.TemplateEngine(include_resolver=_ydst.FileIncludeResolver(search_paths=[td_path]))
-            tmpl = eng.load_template_file(td_path / "b.yaml")
-            out = eng.render(tmpl, context={"v": 42})
+            tmpl = eng.load_template_path(td_path / "b.yaml")
+            out = tmpl.render( context={"v": 42})
             assert out == {"y": {"x": 42}}
 
     def test_dict_key_conflict_policy(self) -> None:
@@ -147,12 +148,12 @@ m: !foreach
 """
         )
         # strict with last-wins
-        out = eng.render(tmpl, registry=_ydst.default_registry(), options=_ydst.RenderOptions(dict_key_conflict="last"))
+        out = tmpl.render( registry=_registry.default_registry(), options=_ydst.RenderOptions(dict_key_conflict="last"))
         assert out["m"] == {1: 1}
 
         # strict with error
         with _pytest.raises(_ydst.RenderError) as cm:
-            eng.render(tmpl, registry=_ydst.default_registry(), options=_ydst.RenderOptions(dict_key_conflict="error"))
+            tmpl.render( registry=_registry.default_registry(), options=_ydst.RenderOptions(dict_key_conflict="error"))
 
         # Ensure the error path includes the iteration index that caused the conflict.
         assert "path=$.m[1].key" in str(cm.value)
@@ -161,11 +162,11 @@ m: !foreach
         eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text("n: !expr \"len(xs)\"\n")
 
-        extra = _ydst.default_registry()
+        extra = _registry.default_registry()
         extra.functions = {"noop": lambda x: x}
 
-        reg = _registry.chain_registries(extra, _ydst.default_registry())
-        out = eng.render(tmpl, context={"xs": [1, 2, 3]}, registry=reg)
+        reg = _registry.chain_registries(extra, _registry.default_registry())
+        out = tmpl.render( context={"xs": [1, 2, 3]}, registry=reg)
         assert out["n"] == 3
 
     def test_expr_calls_with_get_only_registry(self) -> None:
@@ -179,26 +180,25 @@ m: !foreach
         eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text("n: !expr \"len(xs)\"\n")
         reg = _GetOnly({"len": len})
-        out = eng.render(tmpl, context={"xs": [1, 2, 3]}, registry=reg)
+        out = tmpl.render( context={"xs": [1, 2, 3]}, registry=reg)
         assert out["n"] == 3
 
     def test_expr_dict_unpacking_rejected(self) -> None:
         eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text("x: !expr \"{**d}\"\n")
-        with _pytest.raises(_ydst.ExpressionError):
-            eng.render(tmpl, context={"d": {"a": 1}}, registry=_ydst.default_registry())
+        with _pytest.raises(_errors.ExpressionError):
+            tmpl.render( context={"d": {"a": 1}}, registry=_registry.default_registry())
 
     def test_expr_private_attributes_rejected(self) -> None:
         eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text("x: !expr \"obj.__class__.__name__\"\n")
-        with _pytest.raises(_ydst.ExpressionError):
-            eng.render(tmpl, context={"obj": object()}, registry=_ydst.default_registry())
+        with _pytest.raises(_errors.ExpressionError):
+            tmpl.render(context={"obj": object()}, registry=_registry.default_registry())
 
         # Opt-in: allow private/dunder attribute access.
-        out = eng.render(
-            tmpl,
+        out = tmpl.render(
             context={"obj": object()},
-            registry=_ydst.default_registry(),
+            registry=_registry.default_registry(),
             options=_ydst.RenderOptions(allow_private_attributes_in_expr=True),
         )
         assert out["x"] == "object"
@@ -207,25 +207,23 @@ m: !foreach
         eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text("x: !expr \"d['a']\"\n")
 
-        with _pytest.raises(_ydst.ExpressionError):
-            eng.render(
-                tmpl,
+        with _pytest.raises(_errors.ExpressionError):
+            tmpl.render(
                 context={"d": {"a": 1}},
-                registry=_ydst.default_registry(),
+                registry=_registry.default_registry(),
                 options=_ydst.RenderOptions(allow_subscripts_in_expr=False),
             )
 
-        out = eng.render(tmpl, context={"d": {"a": 1}}, registry=_ydst.default_registry())
+        out = tmpl.render(context={"d": {"a": 1}}, registry=_registry.default_registry())
         assert out == {"x": 1}
 
     def test_safe_mode_disables_expr_calls(self) -> None:
         eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text("n: !expr \"len(xs)\"\n")
-        with _pytest.raises(_ydst.ExpressionError):
-            eng.render(
-                tmpl,
+        with _pytest.raises(_errors.ExpressionError):
+            tmpl.render(
                 context={"xs": [1, 2, 3]},
-                registry=_ydst.default_registry(),
+                registry=_registry.default_registry(),
                 options=_ydst.RenderOptions(mode="expr_safe"),
             )
 
@@ -238,7 +236,7 @@ a:
       d: 1
 """)
         with _pytest.raises(_ydst.RenderError):
-            eng.render(tmpl, options=_ydst.RenderOptions(max_depth=3))
+            tmpl.render( options=_ydst.RenderOptions(max_depth=3))
 
     def test_default_omit_for_var_expr_include_rt(self) -> None:
         eng = _ydst.TemplateEngine()
@@ -250,7 +248,7 @@ a: !var
   default: !omit
 b: 1
 """)
-        out_var = eng.render(tmpl_var, registry=_ydst.default_registry())
+        out_var = tmpl_var.render(registry=_registry.default_registry())
         assert out_var == {"b": 1}
 
         tmpl_expr = eng.load_template_text("""
@@ -260,7 +258,7 @@ a: !expr
   default: !omit
 b: 1
 """)
-        out_expr = eng.render(tmpl_expr, registry=_ydst.default_registry())
+        out_expr = tmpl_expr.render(registry=_registry.default_registry())
         assert out_expr == {"b": 1}
 
         with _tempfile.TemporaryDirectory() as td:
@@ -273,7 +271,7 @@ a: !include_rt
   default: !omit
 b: 1
 """)
-            out_inc = eng2.render(tmpl_inc, registry=_ydst.default_registry())
+            out_inc = tmpl_inc.render(registry=_registry.default_registry())
             assert out_inc == {"b": 1}
 
     def test_empty_include_file_is_not_missing(self) -> None:
@@ -285,16 +283,16 @@ b: 1
             (td_path / "rt.yaml").write_text("x: !include_rt empty.yaml\n", encoding="utf-8")
 
             eng = _ydst.TemplateEngine(include_resolver=_ydst.FileIncludeResolver(search_paths=[td_path]))
-            tmpl = eng.load_template_file(td_path / "main.yaml")
-            out = eng.render(tmpl)
+            tmpl = eng.load_template_path(td_path / "main.yaml")
+            out = tmpl.render()
             assert out == {"x": None}
 
-            tmpl_rt = eng.load_template_file(td_path / "rt.yaml")
-            out_rt = eng.render(tmpl_rt)
+            tmpl_rt = eng.load_template_path(td_path / "rt.yaml")
+            out_rt = tmpl_rt.render()
             assert out_rt == {"x": None}
 
             tmpl_rt = eng.load_template_text("x: !include_rt empty.yaml\n")
-            out_rt = eng.render(tmpl_rt)
+            out_rt = tmpl_rt.render()
             assert out_rt == {"x": None}
 
 
@@ -309,10 +307,10 @@ b: 1
 
         # Default: strict pipe stages => unknown string stage is an error.
         with _pytest.raises(_ydst.RenderError):
-            eng.render(tmpl, registry=_ydst.default_registry())
+            tmpl.render( registry=_registry.default_registry())
 
         # Opt-out: allow unknown string stages to be treated as literal values.
-        out = eng.render(tmpl, registry=_ydst.default_registry(), options=_ydst.RenderOptions(strict_pipe_stages=False))
+        out = tmpl.render( registry=_registry.default_registry(), options=_ydst.RenderOptions(strict_pipe_stages=False))
         assert out == {"x": "not_a_function"}
 
     def test_pipe_callable_stage_requires_opt_in(self) -> None:
@@ -326,10 +324,10 @@ b: 1
 
         # Default: callable stages are disabled.
         with _pytest.raises(_ydst.RenderError):
-            eng.render(tmpl, context={"f": lambda x: x + 1})
+            tmpl.render( context={"f": lambda x: x + 1})
 
         # Opt-in: allow callable stages.
-        out = eng.render(tmpl, context={"f": lambda x: x + 1}, options=_ydst.RenderOptions(allow_callable_pipe_stages=True))
+        out = tmpl.render( context={"f": lambda x: x + 1}, options=_ydst.RenderOptions(allow_callable_pipe_stages=True))
         assert out == {"x": 2}
 
     def test_load_time_include_required_false_defaults_to_none(self) -> None:
@@ -341,7 +339,7 @@ b: 1
 """,
             source_name="inline.yaml",
         )
-        out = eng.render(tmpl)
+        out = tmpl.render()
         assert out == {"x": None}
 
     def test_yaml_parse_error_preserves_mark(self) -> None:
@@ -369,7 +367,7 @@ b: 1
   then: "YES"
   else: "NO"
 """)
-        out = eng.render(tmpl)
+        out = tmpl.render()
         assert out == "NO"
 
     def test_omit_is_falsy_in_foreach_when(self) -> None:
@@ -380,7 +378,7 @@ b: 1
   template: {v: !var item}
   when: !omit
 """)
-        out = eng.render(tmpl)
+        out = tmpl.render()
         assert out == []
 
     def test_loader_validates_boolean_fields(self) -> None:
@@ -406,11 +404,11 @@ b: 1
             eng = _ydst.TemplateEngine(include_resolver=resolver)
 
             with _pytest.raises(_ydst.TemplateLoadError):
-                eng.load_template_file(str(p / 'a.yaml'))
+                eng.load_template_path(str(p / 'a.yaml'))
 
     def test_pipe_unknown_stage_strict_errors(self) -> None:
         eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text('!pipe [1, unknown]')
 
         with _pytest.raises(_ydst.RenderError):
-            eng.render(tmpl, registry=_ydst.default_registry(), options=_ydst.RenderOptions(strict_pipe_stages=True))
+            tmpl.render( registry=_registry.default_registry(), options=_ydst.RenderOptions(strict_pipe_stages=True))
