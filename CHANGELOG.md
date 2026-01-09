@@ -1,6 +1,76 @@
 # Changelog
 
 
+## 0.5.0 (2026-01-09)
+
+### Breaking changes
+
+- **`load_template_*()` now returns `Template` objects** instead of raw node trees.
+  - The `Template` class wraps the parsed YAML and provides a `.render()` method.
+  - For raw node tree access, use `load_yaml_*()` methods.
+
+- **Removed legacy module-level functions**: Use `TemplateEngine` methods or `Template` class instead.
+  - `ydst.load_template()` — use `engine.load_template_path()`
+  - `ydst.load_template_text()` — use `engine.load_template_text()` or `Template.from_text()`
+  - `ydst.load_template_file()` — use `engine.load_template_path()` or `Template.from_path()`
+  - `ydst.render()` — use `template.render()`
+  - `ydst.safe_render()` — use `template.render_safe()` with a `safe_engine()`
+  - One-shot rendering: use `ydst.render_text()`, `ydst.render_path()`, `ydst.render_stream()`
+
+- **Removed `engine.load_template_file()`**: Use `engine.load_template_path()` instead.
+
+- **`engine.render()` is now private (`engine._render_tree()`)**: Use `template.render()` instead.
+  - All rendering goes through `Template.render()` — one obvious way to render.
+  - To render a raw node tree, wrap it: `Template(root=raw, engine=eng).render(...)`
+
+- **Analysis/validation functions require `Template` objects**:
+  - `collect_variables(template)`, `validate_template(template)`, `analyze_dependencies(template)`, etc.
+  - Previously accepted raw node trees; now require `Template` objects.
+
+- **Trimmed public API** (77 → 19 exports from `ydst`):
+  - Core API remains: `Template`, `TemplateEngine`, `RenderOptions`, `safe_engine`
+  - One-shot functions: `render_text`, `render_path`, `render_stream`
+  - Engine management: `get_default_engine`, `set_default_engine`
+  - Base errors: `YdstError`, `RenderError`, `TemplateLoadError`, `TemplateValidationError`
+  - Registry: `FunctionRegistry`, `DictFunctionRegistry`, `safe_registry`, `extended_registry`
+  - Includes: `FileIncludeResolver`
+  - **Moved to submodules**: node classes (`ydst.nodes`), specific errors (`ydst.errors`),
+    analysis functions (`ydst.analysis`), validation (`ydst.validate`), registry utils (`ydst.registry`)
+
+### Added
+
+- **`Template` class**: A frozen dataclass wrapping parsed YAML with a `.render()` method.
+  - `Template.from_text(yaml_string)` — load from string
+  - `Template.from_path(path)` — load from filesystem
+  - `Template.from_stream(io)` — load from IO object
+  - `tmpl.render(context=...)` — render the template
+  - `tmpl.render_safe(context=...)` — render with locked_down mode
+
+- **`TemplateEngine` properties**:
+  - `engine.options` — access engine's default `RenderOptions`
+  - `engine.registry` — access engine's default `FunctionRegistry`
+  - `TemplateEngine(options=..., registry=...)` — configure defaults at construction
+
+- **Raw loading methods** on engine:
+  - `engine.load_yaml_text(text)` — returns raw node tree
+  - `engine.load_yaml_path(path)` — returns raw node tree
+  - `engine.load_yaml_stream(io)` — returns raw node tree
+
+- **Module-level convenience functions**:
+  - `ydst.render_text(yaml_text, context=...)` — one-shot: load YAML text and render
+  - `ydst.render_path(path, context=...)` — one-shot: load from path and render
+  - `ydst.render_stream(io, context=...)` — one-shot: load from IO and render
+  - `ydst.get_default_engine()` — get/create module singleton engine
+  - `ydst.set_default_engine(engine)` — configure module default
+
+### Changed
+
+- README updated with new simplified API examples.
+- Documentation updated to use `load_template_text()` and `load_template_path()` consistently.
+- `make typecheck` now runs both mypy and pyright.
+- Added `NodeTree` and `PathSegment` type aliases in `ydst.nodes` for clearer type hints.
+
+
 ## 0.4.1 (2026-01-08)
 
 ### Changed
