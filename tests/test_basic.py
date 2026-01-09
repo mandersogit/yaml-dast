@@ -9,6 +9,7 @@ from ydst import (
     OMIT,
     RenderError,
     ExpressionError,
+    TemplateLoadError,
 )
 from ydst.render import RenderOptions
 from ydst.registry import chain_registries
@@ -238,6 +239,61 @@ b: 1
             tmpl_rt = eng.load_template("x: !include_rt empty.yaml\n")
             out_rt = eng.render(tmpl_rt)
             self.assertEqual(out_rt, {"x": None})
+
+
+    def test_pipe_unknown_string_stage_is_literal(self) -> None:
+        eng = TemplateEngine()
+        tmpl = eng.load_template(
+            """x: !pipe
+  - 1
+  - not_a_function
+"""
+        )
+        out = eng.render(tmpl, registry=default_registry())
+        self.assertEqual(out, {"x": "not_a_function"})
+
+    def test_pipe_callable_stage_requires_opt_in(self) -> None:
+        eng = TemplateEngine()
+        tmpl = eng.load_template(
+            """x: !pipe
+  - 1
+  - !var f
+"""
+        )
+
+        # Default: callable stages are disabled.
+        with self.assertRaises(RenderError):
+            eng.render(tmpl, context={"f": lambda x: x + 1})
+
+        # Opt-in: allow callable stages.
+        out = eng.render(tmpl, context={"f": lambda x: x + 1}, options=RenderOptions(allow_callable_pipe_stages=True))
+        self.assertEqual(out, {"x": 2})
+
+    def test_load_time_include_required_false_defaults_to_none(self) -> None:
+        eng = TemplateEngine()  # no include_resolver
+        tmpl = eng.load_template(
+            """x: !include
+  target: missing.yaml
+  required: false
+""",
+            source_name="inline.yaml",
+        )
+        out = eng.render(tmpl)
+        self.assertEqual(out, {"x": None})
+
+    def test_yaml_parse_error_preserves_mark(self) -> None:
+        eng = TemplateEngine()
+        with self.assertRaises(TemplateLoadError) as cm:
+            eng.load_template("a: [1, 2\n")  # missing closing bracket
+
+        e = cm.exception
+        self.assertIsNotNone(e.ctx)
+        self.assertIsNotNone(e.ctx.mark)
+        # Depending on the YAML parser error type, line/column should be present.
+        self.assertIsInstance(e.ctx.mark.line, int)
+        self.assertIsInstance(e.ctx.mark.column, int)
+        self.assertGreaterEqual(e.ctx.mark.line or 0, 1)
+        self.assertGreaterEqual(e.ctx.mark.column or 0, 1)
 
 
 if __name__ == "__main__":

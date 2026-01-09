@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Protocol, Sequence
@@ -41,11 +42,34 @@ class FileIncludeResolver:
     Security note: this is not a sandbox; treat templates as trusted.
     """
 
-    def __init__(self, *, search_paths: Optional[Sequence[str | Path]] = None, encoding: str = "utf-8"):
+    def __init__(
+        self,
+        *,
+        search_paths: Optional[Sequence[str | Path]] = None,
+        encoding: str = "utf-8",
+        cache: bool = False,
+        cache_max: Optional[int] = None,
+    ):
         self.search_paths = [Path(p) for p in (search_paths or [])]
         self.encoding = encoding
 
+        # Optional in-resolver caching. This caches both hits and misses.
+        #
+        # Note: this is an LRU-ish cache using insertion order.
+        self.cache = cache
+        self.cache_max = cache_max
+        self._cache: "OrderedDict[tuple[str, str | None], IncludeResult]" = OrderedDict()
+
     def resolve(self, target: str, *, from_source: Optional[str] = None) -> IncludeResult:
+        cache_key = (target, from_source)
+        if self.cache:
+            cached = self._cache.get(cache_key)
+            if cached is not None:
+                # LRU: bump to end
+                self._cache.pop(cache_key, None)
+                self._cache[cache_key] = cached
+                return cached
+
         t = Path(target)
 
         candidates: list[Path] = []
@@ -71,8 +95,20 @@ class FileIncludeResolver:
 
             if p.exists() and p.is_file():
                 content = p.read_text(encoding=self.encoding)
-                return IncludeResult(content=content, source_name=str(p), key=str(p))
+                res = IncludeResult(content=content, source_name=str(p), key=str(p))
+                if self.cache:
+                    self._cache[cache_key] = res
+                    if self.cache_max is not None and self.cache_max > 0:
+                        while len(self._cache) > self.cache_max:
+                            self._cache.popitem(last=False)
+                return res
 
         # Nothing resolved.
         # Use the original target as key/name for diagnostics.
-        return IncludeResult(content=None, source_name=str(target), key=str(target))
+        res = IncludeResult(content=None, source_name=str(target), key=str(target))
+        if self.cache:
+            self._cache[cache_key] = res
+            if self.cache_max is not None and self.cache_max > 0:
+                while len(self._cache) > self.cache_max:
+                    self._cache.popitem(last=False)
+        return res

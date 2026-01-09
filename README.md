@@ -67,6 +67,7 @@ ydst render template.yaml --context-file ctx.json --default-registry
 
 ## Notes
 
+- Requires Python 3.10+.
 - YAML anchors/aliases are supported by the YAML loader, but the renderer produces new dict/list objects,
   so alias identity is generally not preserved in the output.
 - This library is **not** a sandbox for untrusted code; expression evaluation is restricted, but treat templates as trusted.

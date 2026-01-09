@@ -9,7 +9,7 @@ import yaml
 from .errors import ErrorContext, IncludeCycleError, TemplateLoadError
 from .include import IncludeResolver
 from .loader import TemplateLoaderMixin
-from .nodes import SourceMark
+from .nodes import SourceMark, UNSET
 from .render import RenderOptions, render_template
 from .registry import FunctionRegistry
 
@@ -122,9 +122,26 @@ class TemplateEngine:
         except TemplateLoadError:
             raise
         except Exception as e:
+            # Attempt to preserve YAML location info for syntax/scan errors.
+            mark = SourceMark(source=source_name)
+            ym = getattr(e, "problem_mark", None) or getattr(e, "context_mark", None) or getattr(e, "mark", None)
+            if ym is not None:
+                try:
+                    line = getattr(ym, "line", None)
+                    col = getattr(ym, "column", None)
+                    src = source_name or getattr(ym, "name", None)
+                    mark = SourceMark(
+                        source=src,
+                        line=(line + 1) if isinstance(line, int) else None,
+                        column=(col + 1) if isinstance(col, int) else None,
+                    )
+                except Exception:
+                    # fall back to source-only mark
+                    mark = SourceMark(source=source_name)
+
             raise TemplateLoadError(
                 str(e),
-                ctx=ErrorContext(mark=SourceMark(source=source_name), node_type="YAML"),
+                ctx=ErrorContext(mark=mark, node_type="YAML"),
                 cause=e,
             )
         finally:
@@ -142,7 +159,7 @@ class TemplateEngine:
         mark: SourceMark,
         include_stack: Optional[list[str]] = None,
         required: bool = True,
-        default: Any = None,
+        default: Any = UNSET,
     ) -> Any:
         resolver = self.include_resolver
         if resolver is None:
@@ -151,7 +168,7 @@ class TemplateEngine:
                     "!include requires an include_resolver",
                     ctx=ErrorContext(mark=mark, node_type="Include"),
                 )
-            return default
+            return None if default is UNSET else default
 
         try:
             res = resolver.resolve(target, from_source=from_source)
@@ -168,7 +185,7 @@ class TemplateEngine:
                     f"Include target not found: {target}",
                     ctx=ErrorContext(mark=mark, node_type="Include"),
                 )
-            return default
+            return None if default is UNSET else default
 
         stack = include_stack if include_stack is not None else []
         if res.key in stack:

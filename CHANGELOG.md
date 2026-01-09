@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.1.3 (2026-01-02)
+
+### Correctness
+
+- `!pipe` string stages now only call registry functions **if** the registry contains a callable of that name.
+  Otherwise, the string is treated as a literal stage result (matching the documented semantics).
+- Load-time `!include` now matches `!var`/`!expr`/`!include_rt` default behavior:
+  when `required: false` and no `default` is provided, missing includes produce `None` (not an omit sentinel).
+- YAML load errors now preserve line/column information when available from PyYAML exceptions.
+
+### API / ergonomics
+
+- Added `UNSET` sentinel to distinguish "no default provided" from "omit".
+  `Var.default`, `Expr.default`, and `IncludeRuntime.default` now default to `UNSET`.
+- Added `RenderOptions.allow_callable_pipe_stages` (default: `False`) to prevent arbitrary callables
+  from being invoked as `!pipe` stages. `mode="safe"` forces this off.
+- Added a per-render runtime include template cache:
+  - `RenderOptions.cache_runtime_includes` (default: `True`)
+  - `RenderOptions.runtime_include_cache_max` (default: `None`, meaning unbounded per render)
+
+### Performance
+
+- `!expr` evaluation no longer copies the scope ChainMap into a new dict per expression.
+- `ExpressionEvaluator` is now built once per render invocation and reused.
+- `FileIncludeResolver` optionally caches include resolution results (`cache=...`, `cache_max=...`).
+
+### Packaging
+
+- Declared `requires-python >=3.10` (code uses `|` type union syntax).
+
+### Documentation & tests
+
+- Updated docs to describe the new pipe semantics, default handling, and caching options.
+- Added tests covering the above.
+
 ## 0.1.2 (2026-01-02)
 
 ### Correctness

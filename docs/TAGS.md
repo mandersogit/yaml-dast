@@ -174,8 +174,10 @@ Pipeline stages:
 
 - First stage is rendered to an initial value.
 - A `!call` stage receives the prior value as its first positional argument.
-- A string stage (e.g., `slugify`) calls the named function if present in the registry.
-- A callable stage (rare; requires the callable to be injected via context/registry) is called with the prior value.
+- A string stage (e.g., `slugify`) calls the named function **if present** in the registry.
+  If the name is not present, the string is treated as a literal stage result.
+- A callable stage is only invoked when `RenderOptions(allow_callable_pipe_stages=True)`.
+  By default, callable stages raise an error (use `!call` or a registry string stage).
 
 ## `!include` (load-time include)
 
@@ -196,6 +198,8 @@ common: !include
 ```
 
 - Load-time includes are resolved and parsed immediately during `engine.load_template(...)`.
+- When `required: false` and no `default` is provided, missing includes evaluate to `null` (`None`),
+  not omission. Use `default: !omit` to omit keys/items.
 
 ## `!include_rt` / `!include_runtime` / `!include_render` (render-time include)
 

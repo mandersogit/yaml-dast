@@ -27,6 +27,11 @@ ydst includes a basic filesystem resolver:
 ```python
 from ydst import FileIncludeResolver
 resolver = FileIncludeResolver(search_paths=[".", "./configs"])
+
+# Optional (in-resolver) caching for repeated resolves in long-running processes:
+# - caches both hits and misses
+# - LRU-ish eviction via cache_max
+cached_resolver = FileIncludeResolver(search_paths=[".", "./configs"], cache=True, cache_max=256)
 ```
 
 Resolution rules:
@@ -53,6 +58,12 @@ Load-time include requires that the engine be configured with a resolver:
 engine = TemplateEngine(include_resolver=resolver)
 ```
 
+Default behavior for missing load-time includes:
+
+- If `required: true` (default), missing includes raise `TemplateLoadError`.
+- If `required: false` and no `default:` is provided, missing includes evaluate to `null` (`None`).
+- Use `default: !omit` to omit keys/items when an include is missing.
+
 Cycle detection is enforced by tracking include keys during a single load operation.
 
 ## Render-time include (`!include_rt`)
@@ -71,6 +82,10 @@ Notes:
 - You must use `TemplateEngine.render(...)` so the renderer can load and evaluate the included YAML.
 - Cycle detection is enforced during rendering.
 - `required: false` and `default:` are supported.
+- Parsed templates for render-time includes are cached **within a single render invocation** by default.
+  You can control this via:
+  - `RenderOptions(cache_runtime_includes=...)`
+  - `RenderOptions(runtime_include_cache_max=...)`
 
 ## Security note
 

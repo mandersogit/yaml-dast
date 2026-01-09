@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional, Sequence
+from typing import Any, Optional
 
 
 @dataclass(frozen=True)
@@ -31,7 +31,18 @@ class Omit(TemplateNode):
 
 
 # Public singleton sentinel used by the renderer.
+#
+# IMPORTANT: this represents "omit" *in the rendered output*. It is not the same as
+# "no default provided". Use UNSET for the latter.
 OMIT = Omit()
+
+
+# Public singleton sentinel representing "no default provided".
+#
+# This is distinct from OMIT so programmatic users can express:
+#   - default omitted / unspecified -> UNSET
+#   - default explicitly omit output -> OMIT (or Omit(...))
+UNSET: Any = object()
 
 
 @dataclass
@@ -41,10 +52,14 @@ class Var(TemplateNode):
     YAML forms:
       - !var NAME
       - !var {name: NAME, default: <template>, required: true|false}
+
+    Default handling:
+      - if the variable is missing and `default` is UNSET, the value is `None`
+      - if the variable is missing and `default` is OMIT / !omit, the key/item is omitted
     """
 
     name: str = ""
-    default: Any = field(default_factory=lambda: OMIT)
+    default: Any = field(default_factory=lambda: UNSET)
     required: bool = True
 
 
@@ -54,6 +69,8 @@ class If(TemplateNode):
 
     YAML form:
       !if {test: <template>, then: <template>, else: <template?>}
+
+    If `else` is omitted, it defaults to !omit.
     """
 
     test: Any = None
@@ -100,11 +117,15 @@ class Expr(TemplateNode):
       - !expr {expr: "x + 1", strict: true|false, default: <template?>}
 
     Expressions are evaluated by an AST-based evaluator; this is not a sandbox.
+
+    Default handling mirrors !var:
+      - if a name is missing and `default` is UNSET, the value is `None` (when strict is false)
+      - if `default` is OMIT / !omit, the key/item is omitted
     """
 
     expr: str = ""
     strict: bool = True
-    default: Any = field(default_factory=lambda: OMIT)
+    default: Any = field(default_factory=lambda: UNSET)
 
     # Internal cache (filled by loader/validator) - do not rely on this field externally.
     _compiled: Any = field(default=None, repr=False, compare=False)
@@ -137,7 +158,14 @@ class Pipe(TemplateNode):
       - first stage is rendered to a value
       - subsequent stages are applied to the current value
         * if stage is a Call node, it is invoked with the current value as the first arg
-        * if stage renders to a string and registry contains such a function, call it with current value
+        * if stage renders to a string and the registry contains a callable with that name,
+          call it with the current value
+        * otherwise the stage result becomes the new value (a pass-through value)
+
+    Note
+    ----
+    By default, stages that render to arbitrary Python callables are *not* invoked.
+    Enable this with RenderOptions(allow_callable_pipe_stages=True) if you need it.
     """
 
     steps: list[Any] = field(default_factory=list)
@@ -156,4 +184,4 @@ class IncludeRuntime(TemplateNode):
 
     target: Any = ""
     required: bool = True
-    default: Any = field(default_factory=lambda: OMIT)
+    default: Any = field(default_factory=lambda: UNSET)

@@ -8,12 +8,14 @@ It provides a restricted expression evaluator and a function allowlist model, bu
 
 - **Includes** (`!include`, `!include_rt`): filesystem access and path traversal if targets are user-controlled.
 - **Function registries**: any callable you expose can have side effects.
+- **Callable pipe stages**: if enabled, any callable injected via context may be invoked by `!pipe`.
 - **Expressions**: even restricted expressions can leak information or trigger expensive computations if you expose large objects or heavy functions.
 
 ## Recommended practices
 
 - Treat templates as trusted inputs.
 - Prefer `!call` over complex `!expr` logic; keep registries small.
+- Keep `RenderOptions(allow_callable_pipe_stages=False)` unless you explicitly need callable stages.
 - If you need to evaluate templates from partially untrusted sources:
   - use `RenderOptions(mode="safe")` to disable attribute access and expression calls **inside `!expr`**
     - note: this does **not** disable `!call`/`!pipe` or includes; those are controlled by what registries/resolvers you provide

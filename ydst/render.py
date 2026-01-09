@@ -26,6 +26,7 @@ from .nodes import (
     IncludeRuntime,
     Omit,
     OMIT,
+    UNSET,
     SourceMark,
     TemplateNode,
     Var,
@@ -57,26 +58,39 @@ class RenderOptions:
         strict=False -> last-wins
       You can force last-wins while still strict by setting dict_key_conflict='last'.
 
-    Security note:
+    Security note
+    -------------
     - `mode='safe'` only affects what is permitted inside `!expr`.
-      It does **not** prevent registry functions from being invoked via `!call` / `!pipe`,
-      and it does not disable file includes.
+      It does **not** disable registry calls via `!call` / `!pipe` or file includes.
     """
 
     mode: str = "trusted"  # "trusted" | "safe"
     strict: bool = True
 
+    # !expr policy
     allow_attribute_access_in_expr: bool = True
     allow_function_calls_in_expr: bool = True
     allow_method_calls_in_expr: bool = False
 
+    # !pipe policy
+    # If True, any pipeline stage that renders to a callable will be invoked with the
+    # current value. If False, use `!call` (registry) or a string stage naming a registry function.
+    allow_callable_pipe_stages: bool = False
+
+    # Structural limits
     max_depth: int = 200
     max_nodes: Optional[int] = None
 
+    # Mapping conflict policy for !foreach into:dict and templated mappings.
     dict_key_conflict: str = "auto"  # auto|error|last|first
 
-    # If True, wrap exceptions with RenderError subclasses preserving causes.
-    # If False, raw exceptions from registry/expr propagate (useful for debugging).
+    # Render-time include caching.
+    # Caches parsed templates (not raw file content) within a single render invocation.
+    cache_runtime_includes: bool = True
+    runtime_include_cache_max: Optional[int] = None
+
+    # If True, wrap foreign exceptions with RenderError subclasses preserving causes.
+    # If False, raw exceptions from registry/expr/include-resolvers propagate (useful for debugging).
     wrap_exceptions: bool = True
 
     trace: Optional[TraceSink] = None
@@ -89,6 +103,9 @@ class RenderOptions:
             o.allow_attribute_access_in_expr = False
             o.allow_function_calls_in_expr = False
             o.allow_method_calls_in_expr = False
+
+            # Also disallow implicit callable stages in !pipe, since this bypasses the registry.
+            o.allow_callable_pipe_stages = False
         return o
 
     def dict_conflict_policy(self) -> str:
@@ -106,6 +123,10 @@ class RenderContext:
     engine: Any = None  # TemplateEngine (optional)
 
     include_resolver: Optional[IncludeResolver] = None
+
+    # Internal helpers/caches (filled by render_template).
+    expr_evaluator: Optional[ExpressionEvaluator] = None
+    runtime_include_cache: Optional[dict[str, Any]] = None
 
     path: list[Any] = None  # type: ignore[assignment]
     depth: int = 0
@@ -136,6 +157,27 @@ def render_template(
         engine=engine,
         include_resolver=include_resolver,
     )
+
+    # Build an expression evaluator once per render invocation.
+    policy = ExprPolicy(
+        allow_attribute_access=ctx.options.allow_attribute_access_in_expr,
+        allow_function_calls=ctx.options.allow_function_calls_in_expr,
+        allow_method_calls=ctx.options.allow_method_calls_in_expr,
+    )
+
+    def _fn_resolver(name: str) -> Optional[Callable[..., Any]]:
+        if ctx.registry is None:
+            return None
+        fn = ctx.registry.get(name)
+        return fn if callable(fn) else None
+
+    ctx.expr_evaluator = ExpressionEvaluator(policy=policy, function_resolver=_fn_resolver)
+
+    if ctx.options.cache_runtime_includes and (
+        ctx.options.runtime_include_cache_max is None or ctx.options.runtime_include_cache_max > 0
+    ):
+        ctx.runtime_include_cache = {}
+
     result = _render_any(template, ctx)
 
     if result is OMIT or isinstance(result, Omit):
@@ -310,9 +352,10 @@ def _render_var(node: Var, ctx: RenderContext) -> Any:
             ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="Var"),
         )
 
-    # Only the singleton sentinel OMIT means "no default specified".
-    # If the default is an actual `!omit` node, render it so the enclosing container drops it.
-    if node.default is not OMIT:
+    # Default handling:
+    #   - default UNSET -> missing optional var becomes None
+    #   - default OMIT / !omit -> omit the key/item
+    if node.default is not UNSET:
         return _render_any(node.default, ctx)
 
     return None
@@ -450,31 +493,35 @@ def _render_foreach(node: ForEach, ctx: RenderContext) -> Any:
     return out_dict  # type: ignore[return-value]
 
 
-def _build_expr_env(ctx: RenderContext) -> dict[str, Any]:
-    env: dict[str, Any] = {}
-    # ChainMap maps are ordered from most local to most global. We want the later ones
-    # overwritten by earlier ones, so update from global->local.
-    for m in reversed(ctx.scope.maps):
-        env.update(m)
-    return env
+def _build_expr_env(ctx: RenderContext) -> Mapping[str, Any]:
+    """Return the expression environment mapping.
+
+    We use the ChainMap directly to avoid rebuilding a fresh dict for each `!expr`.
+    """
+    return ctx.scope
 
 
 def _render_expr(node: Expr, ctx: RenderContext) -> Any:
-    policy = ExprPolicy(
-        allow_attribute_access=ctx.options.allow_attribute_access_in_expr,
-        allow_function_calls=ctx.options.allow_function_calls_in_expr,
-        allow_method_calls=ctx.options.allow_method_calls_in_expr,
-    )
+    evaluator = ctx.expr_evaluator
+    if evaluator is None:
+        # Fallback (should not happen in normal usage): build an evaluator on demand.
+        policy = ExprPolicy(
+            allow_attribute_access=ctx.options.allow_attribute_access_in_expr,
+            allow_function_calls=ctx.options.allow_function_calls_in_expr,
+            allow_method_calls=ctx.options.allow_method_calls_in_expr,
+        )
+
+        def _fn_resolver(name: str) -> Optional[Callable[..., Any]]:
+            if ctx.registry is None:
+                return None
+            fn = ctx.registry.get(name)
+            return fn if callable(fn) else None
+
+        evaluator = ExpressionEvaluator(policy=policy, function_resolver=_fn_resolver)
+        ctx.expr_evaluator = evaluator
 
     env = _build_expr_env(ctx)
 
-    def _fn_resolver(name: str) -> Optional[Callable[..., Any]]:
-        if ctx.registry is None:
-            return None
-        fn = ctx.registry.get(name)
-        return fn if callable(fn) else None
-
-    evaluator = ExpressionEvaluator(policy=policy, function_resolver=_fn_resolver)
     compiled = node._compiled
     if compiled is None:
         try:
@@ -494,7 +541,7 @@ def _render_expr(node: Expr, ctx: RenderContext) -> Any:
         return evaluator.eval(compiled, env)
     except NameError as e:
         if not node.strict or not ctx.options.strict:
-            if node.default is not OMIT:
+            if node.default is not UNSET:
                 return _render_any(node.default, ctx)
             return None
         raise MissingVariableError(
@@ -537,9 +584,9 @@ def _render_call(node: Call, ctx: RenderContext, *, pipe_input: Any = None, incl
         )
 
     fn = ctx.registry.get(fn_val)
-    if fn is None:
+    if fn is None or not callable(fn):
         raise FunctionNotFoundError(
-            f"Function not found in registry: {fn_val}",
+            f"Function not found (or not callable) in registry: {fn_val}",
             ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="Call"),
         )
 
@@ -599,15 +646,20 @@ def _render_pipe(node: Any, ctx: RenderContext) -> Any:
 
             if isinstance(rendered_stage, str) and ctx.registry is not None:
                 fn = ctx.registry.get(rendered_stage)
-                if fn is None:
-                    raise FunctionNotFoundError(
-                        f"Pipeline stage function not found: {rendered_stage}",
-                        ctx=ErrorContext(path=tuple(ctx.path), node_type="Pipe"),
-                    )
-                value = fn(value)
+                if fn is not None and callable(fn):
+                    value = fn(value)
+                    continue
+
+                # If the string is not a known registry function, treat it as a literal value.
+                value = rendered_stage
                 continue
 
             if callable(rendered_stage):
+                if not ctx.options.allow_callable_pipe_stages:
+                    raise RenderError(
+                        "Callable pipe stages are disabled. Use !call or a string stage naming a registry function.",
+                        ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="Pipe"),
+                    )
                 value = rendered_stage(value)
                 continue
 
@@ -629,7 +681,7 @@ def _render_include_runtime(node: IncludeRuntime, ctx: RenderContext) -> Any:
                 "!include_rt requires an include_resolver",
                 ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="IncludeRuntime"),
             )
-        if node.default is not OMIT:
+        if node.default is not UNSET:
             return _render_any(node.default, ctx)
         return None
 
@@ -657,7 +709,7 @@ def _render_include_runtime(node: IncludeRuntime, ctx: RenderContext) -> Any:
                 f"Include target not found: {target_val}",
                 ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="IncludeRuntime"),
             )
-        if node.default is not OMIT:
+        if node.default is not UNSET:
             return _render_any(node.default, ctx)
         return None
 
@@ -675,7 +727,27 @@ def _render_include_runtime(node: IncludeRuntime, ctx: RenderContext) -> Any:
 
     ctx.include_stack.append(res.key)
     try:
-        included_tmpl = ctx.engine.load_template(res.content, source_name=res.source_name)
+        included_tmpl: Any
+
+        cache = ctx.runtime_include_cache
+        if cache is not None:
+            if res.key in cache:
+                # LRU: bump to the end on access
+                included_tmpl = cache.pop(res.key)
+                cache[res.key] = included_tmpl
+            else:
+                included_tmpl = ctx.engine.load_template(res.content, source_name=res.source_name)
+                cache[res.key] = included_tmpl
+
+                maxn = ctx.options.runtime_include_cache_max
+                if maxn is not None and maxn > 0:
+                    while len(cache) > maxn:
+                        # Evict the oldest entry (in insertion/LRU order).
+                        oldest = next(iter(cache))
+                        cache.pop(oldest, None)
+        else:
+            included_tmpl = ctx.engine.load_template(res.content, source_name=res.source_name)
+
         return _render_any(included_tmpl, ctx)
     finally:
         ctx.include_stack.pop()

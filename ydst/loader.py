@@ -15,6 +15,7 @@ from .nodes import (
     IncludeRuntime,
     Omit,
     OMIT,
+    UNSET,
     SourceMark,
     Var,
 )
@@ -80,7 +81,7 @@ def _construct_var(loader: yaml.Loader, node: yaml.Node) -> Var:
         if not isinstance(name, str) or not name:
             raise TemplateLoadError("!var mapping form requires a non-empty 'name' string", ctx=ErrorContext(mark=mark, node_type="Var"))
         required = bool(m.get("required", True))
-        default = m.get("default", OMIT)
+        default = m.get("default", UNSET)
         return Var(name=name, required=required, default=default, mark=mark)
 
     raise TemplateLoadError("Unsupported YAML node form for !var", ctx=ErrorContext(mark=mark, node_type="Var"))
@@ -159,7 +160,7 @@ def _construct_expr(loader: yaml.Loader, node: yaml.Node) -> Expr:
         if not isinstance(expr, str) or not expr:
             raise TemplateLoadError("!expr mapping form requires non-empty 'expr'", ctx=ErrorContext(mark=mark, node_type="Expr"))
         strict = bool(m.get("strict", True))
-        default = m.get("default", OMIT)
+        default = m.get("default", UNSET)
         return Expr(expr=expr, strict=strict, default=default, mark=mark)
 
     raise TemplateLoadError("Unsupported YAML node form for !expr", ctx=ErrorContext(mark=mark, node_type="Expr"))
@@ -213,7 +214,7 @@ def _construct_include(loader: yaml.Loader, node: yaml.Node) -> Any:
     """Load-time include by default; can be configured to return a runtime include node."""
     mark = _mark_from_node(loader, node)
 
-    def _as_runtime(target: Any, required: bool = True, default: Any = OMIT) -> IncludeRuntime:
+    def _as_runtime(target: Any, required: bool = True, default: Any = UNSET) -> IncludeRuntime:
         return IncludeRuntime(target=target, required=required, default=default, mark=mark)
 
     # scalar form: !include "file.yaml" (load-time include)
@@ -228,7 +229,7 @@ def _construct_include(loader: yaml.Loader, node: yaml.Node) -> Any:
         if target is None:
             raise TemplateLoadError("!include mapping form requires 'target'", ctx=ErrorContext(mark=mark, node_type="Include"))
         required = bool(m.get("required", True))
-        default = m.get("default", OMIT)
+        default = m.get("default", UNSET)
 
         if timing in ("render", "runtime", "rt"):
             return _as_runtime(target=target, required=required, default=default)
@@ -248,7 +249,7 @@ def _construct_include_rt(loader: yaml.Loader, node: yaml.Node) -> IncludeRuntim
         if target is None:
             raise TemplateLoadError("!include_rt requires 'target'", ctx=ErrorContext(mark=mark, node_type="IncludeRuntime"))
         required = bool(m.get("required", True))
-        default = m.get("default", OMIT)
+        default = m.get("default", UNSET)
         return IncludeRuntime(target=target, required=required, default=default, mark=mark)
     raise TemplateLoadError("Unsupported YAML node form for !include_rt", ctx=ErrorContext(mark=mark, node_type="IncludeRuntime"))
 
@@ -259,7 +260,7 @@ def _resolve_load_time_include(
     mark: SourceMark,
     *,
     required: bool = True,
-    default: Any = OMIT,
+    default: Any = UNSET,
 ) -> Any:
     engine = getattr(loader, "_ydst_engine", None)
     resolver = getattr(loader, "_ydst_include_resolver", None)
@@ -268,5 +269,5 @@ def _resolve_load_time_include(
     if resolver is None:
         if required:
             raise TemplateLoadError("!include requires an include_resolver", ctx=ErrorContext(mark=mark, node_type="Include"))
-        return default
+        return None if default is UNSET else default
     return engine._load_time_include(target, from_source=getattr(loader, "_ydst_source_name", None), mark=mark, include_stack=getattr(loader, "_ydst_include_stack", None), required=required, default=default)
