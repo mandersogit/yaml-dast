@@ -1,7 +1,7 @@
 # Changelog
 
 
-## 0.4.0 (unreleased)
+## 0.4.0 (2026-01-08)
 
 ### Breaking changes
 
@@ -32,6 +32,13 @@
 - Documentation for stateful patterns using `!python` and `!python_module` together.
 - Documentation for implicit emit limitations in `!python`.
 - Documentation for mode precedence (modes override individual options).
+- `CONTRIBUTING.md` with development setup instructions.
+- `.vscode/settings.json` committed for consistent Python analysis.
+- Polyglot bash/python header in `commit-helper.py` for automatic venv detection.
+
+### Changed
+
+- Test suite converted from unittest to pytest style (pure `assert` statements, no `TestCase` inheritance).
 
 
 ## 0.3.1 (2026-01-08)
