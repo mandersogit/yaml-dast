@@ -76,8 +76,8 @@ class RenderOptions:
     `mode` applies conservative presets:
       - trusted: defaults (full power, but still structured)
       - expr_safe: disable attribute access and function calls in !expr
-      - locked_down: disable !call, !include_rt, !python, !python_module and !setdefault;
-        and apply expr_safe restrictions
+      - locked_down: disable !call, !include_rt, !python, !python_module;
+        and apply expr_safe restrictions (note: !setdefault is always allowed)
     """
 
     # General
@@ -100,8 +100,8 @@ class RenderOptions:
     # Error handling
     wrap_exceptions: bool = True
 
-    # Opt-in power tags
-    allow_setdefault: bool = False
+    # Opt-in power tags (except setdefault which is always allowed)
+    allow_setdefault: bool = True  # Safe: cannot override caller-provided values
     allow_python: bool = False
     allow_python_module: bool = False
 
@@ -141,8 +141,7 @@ class RenderOptions:
             opts.allow_pipe_registry_calls = False
             opts.allow_callable_pipe_stages = False
 
-            # Power tags are disabled in locked-down mode.
-            opts.allow_setdefault = False
+            # Power tags are disabled in locked-down mode (except setdefault which is safe).
             opts.allow_python = False
             opts.allow_python_module = False
 
@@ -363,7 +362,10 @@ def _render_any(value: _typing.Any, ctx: RenderContext) -> _typing.Any:
             rendered: list[_typing.Any] = []
             for i, v in enumerate(value):
                 with _path(ctx, i):
-                    rendered.append(_render_any(v, ctx))
+                    rv = _render_any(v, ctx)
+                    if rv is OMIT or isinstance(rv, Omit):
+                        continue
+                    rendered.append(rv)
             if isinstance(value, tuple):
                 return tuple(rendered)
             return rendered
@@ -376,7 +378,10 @@ def _render_any(value: _typing.Any, ctx: RenderContext) -> _typing.Any:
             rendered_set: set[_typing.Any] = set()
             for i, v in enumerate(value):
                 with _path(ctx, i):
-                    rendered_set.add(_render_any(v, ctx))
+                    rv = _render_any(v, ctx)
+                    if rv is OMIT or isinstance(rv, Omit):
+                        continue
+                    rendered_set.add(rv)
             if isinstance(value, frozenset):
                 return frozenset(rendered_set)
             return rendered_set
@@ -711,7 +716,7 @@ def _render_expr(node: Expr, ctx: RenderContext) -> _typing.Any:
 def _render_call(node: Call, ctx: RenderContext) -> _typing.Any:
     if not ctx.options.allow_calls:
         raise RenderError(
-            "!call is disabled by render options",
+            "!call is disabled (enable with RenderOptions(allow_calls=True) or avoid mode='locked_down')",
             ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="Call"),
         )
 
@@ -778,7 +783,7 @@ def _render_pipe(node: Pipe, ctx: RenderContext) -> _typing.Any:
             if isinstance(stage, Call):
                 if not ctx.options.allow_calls:
                     raise RenderError(
-                        "!call is disabled by render options (encountered inside !pipe)",
+                        "!call is disabled (enable with RenderOptions(allow_calls=True) or avoid mode='locked_down')",
                         ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="Pipe"),
                     )
                 if ctx.registry is None:
@@ -875,7 +880,7 @@ def _render_pipe(node: Pipe, ctx: RenderContext) -> _typing.Any:
 def _render_include_rt(node: IncludeRuntime, ctx: RenderContext) -> _typing.Any:
     if not ctx.options.allow_includes:
         raise RenderError(
-            "!include_rt is disabled by render options",
+            "!include_rt is disabled (enable with RenderOptions(allow_includes=True) or avoid mode='locked_down')",
             ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="IncludeRuntime"),
         )
 
@@ -956,7 +961,7 @@ def _render_include_rt(node: IncludeRuntime, ctx: RenderContext) -> _typing.Any:
 def _render_setdefault(node: SetDefault, ctx: RenderContext) -> _typing.Any:
     if not ctx.options.allow_setdefault:
         raise RenderError(
-            "!setdefault is disabled by render options",
+            "!setdefault is disabled (enable with RenderOptions(allow_setdefault=True))",
             ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="SetDefault"),
         )
 
@@ -1003,7 +1008,7 @@ def _python_compile(code: str, *, filename: str, strict_emit: bool) -> _typing.A
 def _render_python_module(node: PythonModule, ctx: RenderContext) -> _typing.Any:
     if not ctx.options.allow_python_module:
         raise RenderError(
-            "!python_module is disabled by render options",
+            "!python_module is disabled (enable with RenderOptions(allow_python_module=True) or --allow-python-module)",
             ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="PythonModule"),
         )
 
@@ -1052,7 +1057,7 @@ def _render_python_module(node: PythonModule, ctx: RenderContext) -> _typing.Any
 def _render_python(node: Python, ctx: RenderContext) -> _typing.Any:
     if not ctx.options.allow_python:
         raise RenderError(
-            "!python is disabled by render options",
+            "!python is disabled (enable with RenderOptions(allow_python=True) or --allow-python)",
             ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="Python"),
         )
 

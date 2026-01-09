@@ -126,7 +126,6 @@ def cmd_render(args: _argparse.Namespace) -> None:
             wrap_exceptions=not args.raw_exceptions,
             max_depth=args.max_depth,
             max_nodes=args.max_nodes,
-            allow_setdefault=args.allow_setdefault,
             allow_python=args.allow_python,
             allow_python_module=args.allow_python_module,
             python_strict_emit=args.python_strict_emit,
@@ -161,7 +160,6 @@ def cmd_validate(args: _argparse.Namespace) -> None:
     options = render_mod.RenderOptions(
         mode=args.mode,
         strict=not args.non_strict,
-        allow_setdefault=args.allow_setdefault,
         allow_python=args.allow_python,
         allow_python_module=args.allow_python_module,
     )
@@ -284,8 +282,7 @@ def build_parser() -> _argparse.ArgumentParser:
         help="Treat string pipe stages as literal values (do not call registry functions)",
     )
 
-    # Power tags (disabled by default)
-    r.add_argument("--allow-setdefault", action="store_true", help="Enable !setdefault")
+    # Power tags (disabled by default; setdefault is always enabled)
     r.add_argument("--allow-python", action="store_true", help="Enable !python (trusted templates only)")
     r.add_argument("--allow-python-module", action="store_true", help="Enable !python_module (trusted templates only)")
     r.add_argument(
@@ -317,7 +314,6 @@ def build_parser() -> _argparse.ArgumentParser:
     v.add_argument("--non-strict", action="store_true", help="Non-strict mode (missing vars -> None/defaults)")
     v.add_argument("--quiet", action="store_true", help="Only set exit code; do not print 'OK'")
 
-    v.add_argument("--allow-setdefault", action="store_true", help="Allow !setdefault")
     v.add_argument("--allow-python", action="store_true", help="Allow !python")
     v.add_argument("--allow-python-module", action="store_true", help="Allow !python_module")
 

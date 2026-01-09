@@ -320,9 +320,6 @@ class ExpressionEvaluator:
                 if attr.startswith("_") or "__" in attr:
                     raise AttributeError(attr)
 
-            # Mapping convenience: allow x.key for dict-like objects
-            if isinstance(base, _abc.Mapping) and attr in base:
-                return base[attr]
             return getattr(base, attr)
         if isinstance(node, _ast.Call):
             if not self.policy.allow_function_calls:
