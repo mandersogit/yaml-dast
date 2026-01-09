@@ -18,6 +18,16 @@ This is **data-structure templating** (not text templating): the output preserve
 - `!include` — **load-time include**: inlines another YAML file during parsing
 - `!include_rt` — **render-time include**: includes and renders another YAML file during rendering
 
+## Power features (opt-in)
+
+These tags are **disabled by default** and intended for **trusted templates only**:
+
+- `!setdefault` — define a default for one or more variables into the render-time local scope
+- `!python` — execute embedded Python and emit a value into the template output
+- `!python_module` — define helper functions/constants in a shared module scope
+
+Enable them via `RenderOptions` (or CLI flags) when you control the template source.
+
 ## Documentation
 
 - Docs index: [`docs/README.md`](docs/README.md)
@@ -95,7 +105,7 @@ ydst deps template.yaml
 
 ## Notes
 
-- Requires Python 3.10+.
+- Requires Python 3.11+.
 - YAML anchors/aliases are supported by the YAML loader, but the renderer produces new dict/list objects,
   so alias identity is generally not preserved in the output.
 - This library is **not** a sandbox for untrusted code; expression evaluation is restricted, but treat templates as trusted.

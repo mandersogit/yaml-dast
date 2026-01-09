@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from .cli import main
+import ydst.cli as cli
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(cli.main())

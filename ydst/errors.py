@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Optional, Sequence, Tuple
+import collections.abc as _abc
+import dataclasses as _dataclasses
+import typing as _typing
 
-from .nodes import SourceMark
+import ydst.nodes as nodes
 
 
-def format_path(path: Sequence[Any]) -> str:
+def format_path(path: _abc.Sequence[_typing.Any]) -> str:
     """Format a render/load path into a JSONPath-like string.
 
     Rules:
@@ -32,7 +33,7 @@ def format_path(path: Sequence[Any]) -> str:
     return "".join(parts)
 
 
-def format_mark(mark: Optional[SourceMark]) -> str:
+def format_mark(mark: nodes.SourceMark | None) -> str:
     if not mark:
         return "<unknown>"
     if mark.source is None and mark.line is None and mark.column is None:
@@ -46,14 +47,12 @@ def format_mark(mark: Optional[SourceMark]) -> str:
 class YdstError(Exception):
     """Base error for the library."""
 
-    pass
 
-
-@dataclass
+@_dataclasses.dataclass
 class ErrorContext:
-    path: Tuple[Any, ...] = ()
-    mark: Optional[SourceMark] = None
-    node_type: Optional[str] = None
+    path: tuple[_typing.Any, ...] = ()
+    mark: nodes.SourceMark | None = None
+    node_type: str | None = None
 
 
 class ContextualError(YdstError):
@@ -63,7 +62,7 @@ class ContextualError(YdstError):
     and `RenderError` remain consistent.
     """
 
-    def __init__(self, message: str, *, ctx: Optional[ErrorContext] = None, cause: Exception | None = None):
+    def __init__(self, message: str, *, ctx: ErrorContext | None = None, cause: Exception | None = None):
         super().__init__(message)
         self.ctx = ctx or ErrorContext()
         if cause is not None:
@@ -80,11 +79,11 @@ class ContextualError(YdstError):
 
 
 class TemplateLoadError(ContextualError):
-    pass
+    """Errors raised while parsing/loading templates."""
 
 
 class TemplateValidationError(ContextualError):
-    pass
+    """Errors raised by static template validation."""
 
 
 class RenderError(ContextualError):
@@ -92,28 +91,36 @@ class RenderError(ContextualError):
 
 
 class MissingVariableError(RenderError):
-    pass
+    """A required variable (e.g. !var required=true) was missing at render time."""
 
 
 class RootOmitError(RenderError):
-    pass
+    """The template rendered to OMIT at the document root, which is not allowed."""
 
 
 class ExpressionError(RenderError):
-    pass
+    """An error occurred evaluating a !expr."""
 
 
 class FunctionNotFoundError(RenderError):
-    pass
+    """A function name could not be resolved in a registry."""
 
 
 class FunctionCallError(RenderError):
-    pass
+    """A registry function raised an exception during execution."""
 
 
 class IncludeError(RenderError):
-    pass
+    """An include operation failed."""
 
 
 class IncludeCycleError(IncludeError):
-    pass
+    """A cycle was detected in includes."""
+
+
+class PythonError(RenderError):
+    """An error occurred executing a !python / !python_module block."""
+
+
+class PythonEmitError(PythonError):
+    """A !python block completed without emitting a value (strict emit mode)."""

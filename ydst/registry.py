@@ -1,34 +1,41 @@
 from __future__ import annotations
 
-import json
-import os
-import re
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterable, Mapping, Optional, Protocol, Sequence
+import dataclasses as _dataclasses
+import json as _json
+import os as _os
+import re as _re
+import typing as _typing
+import collections.abc as _abc
 
-from .nodes import OMIT, Omit
+import ydst.nodes as nodes
 
 
-class FunctionRegistry(Protocol):
+class FunctionRegistry(_typing.Protocol):
     """Protocol for resolving function names.
 
     The core contract is intentionally small: only `.get(name)` is required.
 
     Some registry implementations also provide an optional `.keys()` for
     introspection. ydst does not rely on `.keys()` for correctness.
+
+    Note
+    ----
+    The return type is `object | None` (not strictly Callable) because:
+      - user registries may store non-callables, and ydst checks `callable(...)`
+      - python-module overlays may store constants alongside helper functions
     """
 
-    def get(self, name: str) -> Optional[Callable[..., Any]]: ...
+    def get(self, name: str) -> object | None: ...
 
 
-@dataclass
+@_dataclasses.dataclass(slots=True)
 class DictFunctionRegistry(FunctionRegistry):
-    functions: Dict[str, Callable[..., Any]]
+    functions: dict[str, object]
 
-    def get(self, name: str) -> Optional[Callable[..., Any]]:
+    def get(self, name: str) -> object | None:
         return self.functions.get(name)
 
-    def keys(self) -> Iterable[str]:
+    def keys(self) -> _abc.Iterable[str]:
         return self.functions.keys()
 
 
@@ -42,14 +49,14 @@ def chain_registries(*registries: FunctionRegistry) -> FunctionRegistry:
     """
 
     class _Chained(FunctionRegistry):
-        def get(self, name: str) -> Optional[Callable[..., Any]]:
+        def get(self, name: str) -> object | None:
             for r in registries:
                 fn = r.get(name)
                 if fn is not None:
                     return fn
             return None
 
-        def keys(self) -> Iterable[str]:  # pragma: no cover (optional API)
+        def keys(self) -> _abc.Iterable[str]:  # pragma: no cover (optional API)
             seen: set[str] = set()
             for r in registries:
                 keys = getattr(r, "keys", None)
@@ -66,7 +73,7 @@ def chain_registries(*registries: FunctionRegistry) -> FunctionRegistry:
     return _Chained()
 
 
-def _parse_path(path: Any) -> list[Any]:
+def _parse_path(path: _typing.Any) -> list[_typing.Any]:
     if isinstance(path, (list, tuple)):
         return list(path)
     if isinstance(path, str):
@@ -93,7 +100,7 @@ def _parse_path(path: Any) -> list[Any]:
     return [path]
 
 
-def get_in(obj: Any, path: Any, default: Any = None) -> Any:
+def get_in(obj: _typing.Any, path: _typing.Any, default: _typing.Any = None) -> _typing.Any:
     """Get a nested value from dict/list-like objects.
 
     `path` may be:
@@ -113,7 +120,7 @@ def get_in(obj: Any, path: Any, default: Any = None) -> Any:
         if cur is None:
             return default
         try:
-            if isinstance(cur, Mapping) and key in cur:
+            if isinstance(cur, _abc.Mapping) and key in cur:
                 cur = cur[key]
                 continue
             # integer index for sequences
@@ -133,11 +140,11 @@ def get_in(obj: Any, path: Any, default: Any = None) -> Any:
     return cur
 
 
-def coalesce(*values: Any, default: Any = None) -> Any:
+def coalesce(*values: _typing.Any, default: _typing.Any = None) -> _typing.Any:
     """Return the first value that is neither OMIT nor None; else `default`."""
 
     for v in values:
-        if v is OMIT or isinstance(v, Omit):
+        if v is nodes.OMIT or isinstance(v, nodes.Omit):
             continue
         if v is None:
             continue
@@ -145,10 +152,10 @@ def coalesce(*values: Any, default: Any = None) -> Any:
     return default
 
 
-_slug_re = re.compile(r"[^a-z0-9]+")
+_slug_re = _re.compile(r"[^a-z0-9]+")
 
 
-def slugify(value: Any, *, max_len: int | None = None) -> str:
+def slugify(value: _typing.Any, *, max_len: int | None = None) -> str:
     s = str(value).strip().lower()
     s = _slug_re.sub("-", s).strip("-")
     if max_len is not None and max_len >= 0:
@@ -156,26 +163,26 @@ def slugify(value: Any, *, max_len: int | None = None) -> str:
     return s
 
 
-def env(name: str, default: Any = None) -> Any:
-    return os.environ.get(name, default)
+def env(name: str, default: _typing.Any = None) -> _typing.Any:
+    return _os.environ.get(name, default)
 
 
-def to_int(value: Any, default: int | None = None) -> int | None:
+def to_int(value: _typing.Any, default: int | None = None) -> int | None:
     try:
         return int(value)
     except Exception:
         return default
 
 
-def to_float(value: Any, default: float | None = None) -> float | None:
+def to_float(value: _typing.Any, default: float | None = None) -> float | None:
     try:
         return float(value)
     except Exception:
         return default
 
 
-def json_dumps(value: Any, *, sort_keys: bool = True) -> str:
-    return json.dumps(value, sort_keys=sort_keys)
+def json_dumps(value: _typing.Any, *, sort_keys: bool = True) -> str:
+    return _json.dumps(value, sort_keys=sort_keys)
 
 
 def default_registry() -> DictFunctionRegistry:
@@ -204,7 +211,7 @@ def minimal_registry() -> DictFunctionRegistry:
     This registry intentionally excludes environment access and general-purpose builtins.
     """
 
-    funcs: Dict[str, Callable[..., Any]] = {
+    funcs: dict[str, object] = {
         "get_in": get_in,
         "coalesce": coalesce,
         "slugify": slugify,
@@ -218,42 +225,43 @@ def safe_registry() -> DictFunctionRegistry:
     """A safer-by-default registry.
 
     Includes the minimal helpers plus a small set of explicit, non-I/O builtins.
+
+    Notes
+    -----
+    - This still isn't a sandbox; it is simply a curated set of helpers.
+    - If you need env() / I/O-like access, use extended_registry() explicitly.
     """
 
-    funcs: Dict[str, Callable[..., Any]] = {
-        # pure helpers
-        "get_in": get_in,
-        "coalesce": coalesce,
-        "slugify": slugify,
-        "to_int": to_int,
-        "to_float": to_float,
-        "json_dumps": json_dumps,
-        # common safe builtins (explicitly listed)
+    funcs: dict[str, object] = {
+        **minimal_registry().functions,
+        # Aggregation / ordering
         "len": len,
         "min": min,
         "max": max,
         "sum": sum,
         "sorted": sorted,
+        # Type / basic numeric helpers
         "str": str,
         "int": int,
         "float": float,
         "bool": bool,
         "round": round,
         "abs": abs,
+        # Encoding
+        "json_dumps": json_dumps,
     }
     return DictFunctionRegistry(funcs)
 
 
-def extended_registry() -> DictFunctionRegistry:
-    """An extended built-in registry.
 
-    This includes the :func:`safe_registry` plus helpers that may expose
-    environmental data.
+def extended_registry() -> DictFunctionRegistry:
+    """An extended registry including environment access.
+
+    This is appropriate for trusted templates only.
     """
 
-    base = safe_registry().functions
-    funcs: Dict[str, Callable[..., Any]] = dict(base)
-    funcs.update({
+    funcs: dict[str, object] = {
+        **safe_registry().functions,
         "env": env,
-    })
+    }
     return DictFunctionRegistry(funcs)

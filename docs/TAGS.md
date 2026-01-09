@@ -277,3 +277,92 @@ Notes:
 
 - The include target can be templated (because `target` is rendered first).
 - To avoid repeated file I/O, set `RenderOptions(cache_runtime_includes=True)`.
+
+
+## !setdefault
+
+Define default values into the render-time local scope.
+
+This tag is useful when you want to compute a default once and then refer to it later with `!var`.
+If a name is already present in the render scope, it is left unchanged.
+
+**This tag is disabled by default.** Enable it with `RenderOptions(allow_setdefault=True)` (or the CLI flag
+`--allow-setdefault`).
+
+Example:
+
+```yaml
+app:
+  # Provide defaults only if not set by the caller
+  - !setdefault
+      env: prod
+      region: us-east-1
+
+  - env: !var env
+    region: !var region
+```
+
+Notes:
+- `!setdefault` returns `!omit`, so it doesn't appear in list/dict output.
+- Defaults are rendered (so they may contain templating tags themselves).
+- `mode="locked_down"` disables `!setdefault` regardless of `allow_setdefault`.
+
+## !python
+
+Execute embedded Python and emit a value.
+
+**This tag is disabled by default and is only appropriate for trusted templates.**
+Enable it with `RenderOptions(allow_python=True)` (or the CLI flag `--allow-python`).
+
+The code can either:
+- call `emit(value)` explicitly, or
+- (by default) omit `emit(...)` and rely on the **final expression** being emitted automatically.
+
+Example (explicit emit):
+
+```yaml
+answer: !python |
+  x = 40 + 2
+  emit(x)
+```
+
+Example (implicit emit of the trailing expression):
+
+```yaml
+answer: !python |
+  40 + 2
+```
+
+Strict emit:
+- Set `RenderOptions(python_strict_emit=True)` or use `!python {code: "...", strict_emit: true}` to require
+  an explicit `emit(...)` call.
+
+Execution environment:
+- Locals start as a snapshot of the current render scope (variables from `!var` are available as names).
+- The following helpers are injected: `emit`, `ctx`, `scope`, `registry` (if available), `OMIT`, `UNSET`.
+
+## !python_module
+
+Execute embedded Python in a shared module scope, typically to define helper functions/constants.
+
+**This tag is disabled by default and is only appropriate for trusted templates.**
+Enable it with `RenderOptions(allow_python_module=True)` (or the CLI flag `--allow-python-module`).
+
+Example:
+
+```yaml
+- !python_module |
+    def slug(s: str) -> str:
+        return s.lower().replace(" ", "-")
+
+name: "Hello World"
+slug: !expr slug(name)
+slug2: !call {fn: slug, args: ["Hello World"]}
+```
+
+Notes:
+- `!python_module` returns `!omit`, so it doesn't appear in output.
+- The module scope is shared for the duration of a single render (including runtime includes).
+- Functions defined in `!python_module` are available to `!call` and `!pipe` registry lookups and to `!expr`
+  function calls (in modes where `!expr` function calls are enabled).
+- `mode="locked_down"` disables `!python_module` regardless of `allow_python_module`.

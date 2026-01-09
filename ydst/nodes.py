@@ -1,46 +1,47 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field, fields
-from typing import Any, Iterator, Optional
+import collections.abc as _abc
+import dataclasses as _dataclasses
+import typing as _typing
 
 
-@dataclass(frozen=True, slots=True)
+@_dataclasses.dataclass(frozen=True, slots=True)
 class SourceMark:
     """Source location information for a YAML node.
 
     Line/column are 1-based for human readability (matching most editor conventions).
     """
 
-    source: Optional[str] = None
-    line: Optional[int] = None
-    column: Optional[int] = None
+    source: str | None = None
+    line: int | None = None
+    column: int | None = None
 
 
-@dataclass(frozen=True, slots=True)
+@_dataclasses.dataclass(frozen=True, slots=True)
 class TemplateNode:
     """Base class for all template nodes.
 
     Template nodes are treated as immutable. The renderer does not mutate nodes at runtime.
     """
 
-    mark: Optional[SourceMark] = None
+    mark: SourceMark | None = None
 
     # Important: do not allow TemplateNode objects to become usable as dict keys.
     # ydst intentionally forbids templated keys in mappings.
     __hash__ = None
 
 
-def iter_template_node_items(node: TemplateNode) -> Iterator[tuple[str, Any]]:
+def iter_template_node_items(node: TemplateNode) -> _abc.Iterator[tuple[str, _typing.Any]]:
     """Yield (field_name, value) for a TemplateNode.
 
     We use dataclass fields instead of `__dict__` so nodes can be `slots=True`.
     """
 
-    for f in fields(node):
+    for f in _dataclasses.fields(node):
         yield f.name, getattr(node, f.name)
 
 
-@dataclass(frozen=True, slots=True)
+@_dataclasses.dataclass(frozen=True, slots=True)
 class Omit(TemplateNode):
     """A sentinel node that removes a key or list item from the rendered output."""
 
@@ -63,10 +64,10 @@ OMIT = Omit()
 # This is distinct from OMIT so programmatic users can express:
 #   - default omitted / unspecified -> UNSET
 #   - default explicitly omit output -> OMIT (or Omit(...))
-UNSET: Any = object()
+UNSET: _typing.Any = object()
 
 
-@dataclass(frozen=True, slots=True)
+@_dataclasses.dataclass(frozen=True, slots=True)
 class Var(TemplateNode):
     """Variable substitution.
 
@@ -82,11 +83,11 @@ class Var(TemplateNode):
     __hash__ = None
 
     name: str = ""
-    default: Any = field(default_factory=lambda: UNSET)
+    default: _typing.Any = _dataclasses.field(default_factory=lambda: UNSET)
     required: bool = True
 
 
-@dataclass(frozen=True, slots=True)
+@_dataclasses.dataclass(frozen=True, slots=True)
 class Default(TemplateNode):
     """Coalesce / fallback.
 
@@ -110,13 +111,13 @@ class Default(TemplateNode):
 
     __hash__ = None
 
-    value: Any = None
-    default: Any = field(default_factory=lambda: UNSET)
+    value: _typing.Any = None
+    default: _typing.Any = _dataclasses.field(default_factory=lambda: UNSET)
     treat_none_as_missing: bool = True
     treat_omit_as_missing: bool = True
 
 
-@dataclass(frozen=True, slots=True)
+@_dataclasses.dataclass(frozen=True, slots=True)
 class If(TemplateNode):
     """Conditional selection.
 
@@ -128,12 +129,12 @@ class If(TemplateNode):
 
     __hash__ = None
 
-    test: Any = None
-    then: Any = None
-    else_: Any = field(default_factory=lambda: OMIT)
+    test: _typing.Any = None
+    then: _typing.Any = None
+    else_: _typing.Any = _dataclasses.field(default_factory=lambda: OMIT)
 
 
-@dataclass(frozen=True, slots=True)
+@_dataclasses.dataclass(frozen=True, slots=True)
 class ForEach(TemplateNode):
     """Iteration / collection generation.
 
@@ -150,24 +151,24 @@ class ForEach(TemplateNode):
     __hash__ = None
 
     var: str = "item"
-    in_: Any = None
+    in_: _typing.Any = None
     # Presence-sensitive. Use UNSET to represent "missing" so programmatic construction
     # can be validated consistently with YAML-loaded templates.
-    template: Any = field(default_factory=lambda: UNSET)
+    template: _typing.Any = _dataclasses.field(default_factory=lambda: UNSET)
 
     # Optional additions
-    index: Optional[str] = None
-    when: Any = None
+    index: str | None = None
+    when: _typing.Any = None
 
     # Output target: "list" (default), "dict", "set"
     into: str = "list"
 
     # Dict output fields
-    key: Any = field(default_factory=lambda: UNSET)
-    value: Any = field(default_factory=lambda: UNSET)
+    key: _typing.Any = _dataclasses.field(default_factory=lambda: UNSET)
+    value: _typing.Any = _dataclasses.field(default_factory=lambda: UNSET)
 
 
-@dataclass(frozen=True, slots=True)
+@_dataclasses.dataclass(frozen=True, slots=True)
 class Expr(TemplateNode):
     """Expression evaluation.
 
@@ -186,10 +187,10 @@ class Expr(TemplateNode):
 
     expr: str = ""
     strict: bool = True
-    default: Any = field(default_factory=lambda: UNSET)
+    default: _typing.Any = _dataclasses.field(default_factory=lambda: UNSET)
 
 
-@dataclass(frozen=True, slots=True)
+@_dataclasses.dataclass(frozen=True, slots=True)
 class Call(TemplateNode):
     """Call a named function from a registry.
 
@@ -202,12 +203,12 @@ class Call(TemplateNode):
 
     __hash__ = None
 
-    fn: Any = ""
-    args: list[Any] = field(default_factory=list)
-    kwargs: dict[str, Any] = field(default_factory=dict)
+    fn: _typing.Any = ""
+    args: list[_typing.Any] = _dataclasses.field(default_factory=list)
+    kwargs: dict[str, _typing.Any] = _dataclasses.field(default_factory=dict)
 
 
-@dataclass(frozen=True, slots=True)
+@_dataclasses.dataclass(frozen=True, slots=True)
 class Pipe(TemplateNode):
     """Pipeline composition.
 
@@ -235,10 +236,10 @@ class Pipe(TemplateNode):
 
     __hash__ = None
 
-    steps: list[Any] = field(default_factory=list)
+    steps: list[_typing.Any] = _dataclasses.field(default_factory=list)
 
 
-@dataclass(frozen=True, slots=True)
+@_dataclasses.dataclass(frozen=True, slots=True)
 class IncludeRuntime(TemplateNode):
     """Render-time include.
 
@@ -251,6 +252,77 @@ class IncludeRuntime(TemplateNode):
 
     __hash__ = None
 
-    target: Any = ""
+    target: _typing.Any = ""
     required: bool = True
-    default: Any = field(default_factory=lambda: UNSET)
+    default: _typing.Any = _dataclasses.field(default_factory=lambda: UNSET)
+
+
+@_dataclasses.dataclass(frozen=True, slots=True)
+class SetDefault(TemplateNode):
+    """Set default variables for the remainder of a render.
+
+    `!setdefault` is a side-effecting tag intended for templates that want to
+    provide defaults for optional context values.
+
+    YAML forms:
+      - !setdefault [name, value]
+      - !setdefault {name: NAME, value: <template>}  # or {name: NAME, default: <template>}
+      - !setdefault {var1: <template>, var2: <template>, ...}
+
+    Rendering semantics:
+      - For each entry, if the name is not already present in scope, the value is
+        rendered and assigned into the template-local scope.
+      - The node itself renders to OMIT (so it can be used as "bookkeeping" without
+        appearing in output).
+
+    This tag is disabled by default; enable it with `RenderOptions(allow_setdefault=True)`.
+    """
+
+    __hash__ = None
+
+    defaults: dict[str, _typing.Any] = _dataclasses.field(default_factory=dict)
+
+
+@_dataclasses.dataclass(frozen=True, slots=True)
+class Python(TemplateNode):
+    """Execute a trusted Python snippet and emit a value.
+
+    YAML forms:
+      - !python |\n          # code
+      - !python {code: "...", strict_emit: true|false}
+
+    Semantics:
+      - The snippet is executed at render time.
+      - Use `emit(value)` to provide the node's value and terminate execution.
+      - If `emit()` is not called and strict emit is disabled, the value of the
+        final expression statement is used (or `None` if there is no final expression).
+
+    This tag is disabled by default; enable it with `RenderOptions(allow_python=True)`.
+    """
+
+    __hash__ = None
+
+    code: str = ""
+    strict_emit: bool | None = None
+
+
+@_dataclasses.dataclass(frozen=True, slots=True)
+class PythonModule(TemplateNode):
+    """Execute a trusted Python snippet to define reusable helpers.
+
+    YAML forms:
+      - !python_module |\n          # code
+      - !python_module {code: "..."}
+
+    Semantics:
+      - Executed at render time.
+      - Definitions made in the module scope are shared across subsequent `!python`
+        nodes within the same render invocation.
+      - The node always renders to OMIT.
+
+    This tag is disabled by default; enable it with `RenderOptions(allow_python_module=True)`.
+    """
+
+    __hash__ = None
+
+    code: str = ""

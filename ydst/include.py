@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from collections import OrderedDict
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Optional, Protocol, Sequence
+import collections as _collections
+import collections.abc as _abc
+import dataclasses as _dataclasses
+import pathlib as _pathlib
+import typing as _typing
 
 
-@dataclass(frozen=True)
+@_dataclasses.dataclass(frozen=True, slots=True)
 class IncludeResult:
     """Resolved include content and identity.
 
@@ -22,13 +23,12 @@ class IncludeResult:
     key: str
 
 
-class IncludeResolver(Protocol):
-    def resolve(self, target: str, *, from_source: Optional[str] = None) -> IncludeResult:
+class IncludeResolver(_typing.Protocol):
+    def resolve(self, target: str, *, from_source: str | None = None) -> IncludeResult:
         """Resolve an include target into YAML content.
 
         `from_source` is a best-effort source identifier for relative resolution.
         """
-
         ...
 
 
@@ -57,16 +57,16 @@ class FileIncludeResolver:
     def __init__(
         self,
         *,
-        search_paths: Optional[Sequence[str | Path]] = None,
+        search_paths: _abc.Sequence[str | _pathlib.Path] | None = None,
         encoding: str = "utf-8",
-        max_bytes: Optional[int] = None,
+        max_bytes: int | None = None,
         cache: bool = False,
-        cache_max: Optional[int] = None,
+        cache_max: int | None = None,
         allow_absolute: bool = True,
         enforce_roots: bool = False,
-        roots: Optional[Sequence[str | Path]] = None,
+        roots: _abc.Sequence[str | _pathlib.Path] | None = None,
     ):
-        self.search_paths = [Path(p) for p in (search_paths or [])]
+        self.search_paths = [_pathlib.Path(p) for p in (search_paths or [])]
         self.encoding = encoding
         self.max_bytes = max_bytes
 
@@ -75,18 +75,20 @@ class FileIncludeResolver:
 
         # If roots are not provided, default to search_paths.
         roots_seq = list(roots) if roots is not None else list(self.search_paths)
-        self.roots = [Path(p).resolve() for p in roots_seq]
+        self.roots = [_pathlib.Path(p).resolve() for p in roots_seq]
 
         if self.enforce_roots and not self.roots:
-            raise ValueError("enforce_roots=True requires at least one root (pass roots=... or search_paths=...)")
+            raise ValueError(
+                "enforce_roots=True requires at least one root (pass roots=... or search_paths=...)"
+            )
 
         # Optional in-resolver caching. This caches both hits and misses.
         # Note: this is an LRU-ish cache using insertion order.
         self.cache = cache
         self.cache_max = cache_max
-        self._cache: "OrderedDict[tuple[str, str | None], IncludeResult]" = OrderedDict()
+        self._cache: _collections.OrderedDict[tuple[str, str | None], IncludeResult] = _collections.OrderedDict()
 
-    def _check_roots(self, resolved_path: Path) -> None:
+    def _check_roots(self, resolved_path: _pathlib.Path) -> None:
         if not self.enforce_roots:
             return
 
@@ -100,7 +102,7 @@ class FileIncludeResolver:
         roots_str = ", ".join(str(r) for r in self.roots)
         raise ValueError(f"Resolved include path is outside allowed roots: {resolved_path} (roots: {roots_str})")
 
-    def resolve(self, target: str, *, from_source: Optional[str] = None) -> IncludeResult:
+    def resolve(self, target: str, *, from_source: str | None = None) -> IncludeResult:
         cache_key = (target, from_source)
         if self.cache:
             cached = self._cache.get(cache_key)
@@ -110,9 +112,9 @@ class FileIncludeResolver:
                 self._cache[cache_key] = cached
                 return cached
 
-        t = Path(target)
+        t = _pathlib.Path(target)
 
-        candidates: list[Path] = []
+        candidates: list[_pathlib.Path] = []
         if t.is_absolute():
             if not self.allow_absolute:
                 raise ValueError(f"Absolute include targets are disallowed: {target!r}")
@@ -120,7 +122,7 @@ class FileIncludeResolver:
         else:
             if from_source:
                 try:
-                    fs = Path(from_source)
+                    fs = _pathlib.Path(from_source)
                     # Heuristic: treat it as path-like if it exists or looks like a filename.
                     if fs.is_absolute() or fs.exists() or len(fs.parts) > 1:
                         candidates.append(fs.parent / t)

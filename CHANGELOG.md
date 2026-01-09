@@ -1,6 +1,22 @@
 # Changelog
 
 
+## 0.3.0 (2026-01-05)
+
+### Breaking changes
+- **Python >= 3.11 is now required.**
+
+### Added
+- New `!setdefault` tag for defining defaults into the render-time local scope (opt-in via `RenderOptions.allow_setdefault`).
+- New `!python` tag for executing embedded Python and emitting a value (opt-in via `RenderOptions.allow_python`).  
+  - Supports implicit emit of the trailing expression, unless `python_strict_emit`/`strict_emit` is enabled.
+- New `!python_module` tag for defining helper functions/constants in a shared module scope (opt-in via `RenderOptions.allow_python_module`).  
+  - Functions defined here are available to `!call`/`!pipe` registry lookups and `!expr` function calls.
+- CLI: added `--allow-setdefault`, `--allow-python`, `--allow-python-module`, and `--python-strict-emit`.
+
+### Notes
+- These power features are disabled by default and are also disabled by `mode="locked_down"`.
+
 ## 0.2.1 (2026-01-03)
 
 ### Correctness

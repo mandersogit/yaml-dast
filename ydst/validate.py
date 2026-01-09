@@ -1,72 +1,39 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from typing import Any, Optional, Set
+import collections.abc as _abc
+import typing as _typing
 
-from .errors import ErrorContext, TemplateValidationError
-from .expr import ExprPolicy, ExpressionEvaluator
-from .nodes import (
-    Call,
-    Default,
-    Expr,
-    ForEach,
-    IncludeRuntime,
-    If,
-    Pipe,
-    TemplateNode,
-    Var,
-    UNSET,
-    iter_template_node_items,
-)
-
-# RenderOptions is imported lazily (and only for optional validation rules) to
-# keep this module usable in minimal contexts.
-try:  # pragma: no cover
-    from .render import RenderOptions
-except Exception:  # pragma: no cover
-    RenderOptions = None  # type: ignore[assignment]
+import ydst.errors as errors
+import ydst.nodes as nodes
+import ydst.registry as registry_mod
+import ydst.render as render_mod
 
 
-def collect_variables(template: Any) -> Set[str]:
-    """Collect variable names referenced by !var nodes.
+def collect_variables(template: _typing.Any) -> set[str]:
+    """Collect variable names referenced by !var nodes."""
 
-    Notes
-    -----
-    - This does *not* attempt to parse names out of !expr strings.
-    - It does walk into defaults and other subtrees to find nested !var nodes.
-    """
+    out: set[str] = set()
 
-    out: Set[str] = set()
-
-    def walk(x: Any) -> None:
-        if isinstance(x, Var):
+    def walk(x: _typing.Any) -> None:
+        if isinstance(x, nodes.Var):
             out.add(x.name)
-            if x.default is not UNSET:
+            if x.default is not nodes.UNSET:
                 walk(x.default)
             return
-
-        if isinstance(x, Expr):
-            if x.default is not UNSET:
-                walk(x.default)
-            return
-
-        if isinstance(x, TemplateNode):
-            for _, v in iter_template_node_items(x):
+        if isinstance(x, nodes.TemplateNode):
+            for _, v in nodes.iter_template_node_items(x):
                 walk(v)
             return
-
-        if isinstance(x, Mapping):
+        if isinstance(x, _abc.Mapping):
             for k, v in x.items():
                 walk(k)
                 walk(v)
             return
-
         if isinstance(x, (set, frozenset)):
             for v in x:
                 walk(v)
             return
-
-        if isinstance(x, Sequence) and not isinstance(x, (str, bytes, bytearray)):
+        if isinstance(x, _abc.Sequence) and not isinstance(x, (str, bytes, bytearray)):
             for v in x:
                 walk(v)
             return
@@ -75,223 +42,129 @@ def collect_variables(template: Any) -> Set[str]:
     return out
 
 
-def validate_template(
-    template: Any,
+def _validate_mapping_keys(
+    m: _abc.Mapping[_typing.Any, _typing.Any],
     *,
-    policy: Optional[ExprPolicy] = None,
-    options: Optional["RenderOptions"] = None,
+    ctx: errors.ErrorContext,
+    allow_non_string: bool,
 ) -> None:
-    """Validate a template graph.
-
-    This is a *static* validation pass. It does not render the template.
-
-    Validates
-    ---------
-    - !expr syntax and policy compliance
-    - disallows templated mapping keys (TemplateNode keys)
-    - validates basic structural invariants for core nodes (!foreach, !call, ...)
-    - optionally enforces render-time restrictions when `options` is provided
-      (e.g., in `locked_down` mode, !call and !include_rt should be rejected)
-
-    Parameters
-    ----------
-    policy:
-        Expression policy. If omitted and `options` is provided, a policy is derived
-        from `options`.
-    options:
-        If provided, used to enforce template features that will be disabled during
-        rendering (e.g. allow_calls/allow_includes).
-    """
-
-    opts = None
-    if options is not None:
-        # RenderOptions.normalized() validates values and canonicalizes mode aliases.
-        try:
-            opts = options.normalized()
-        except Exception:
-            # If a caller passes an object with a compatible interface but without
-            # normalized(), we simply treat it as absent.
-            opts = None
-
-    if policy is None and opts is not None:
-        policy = ExprPolicy(
-            allow_attribute_access=opts.allow_attribute_access_in_expr,
-            allow_function_calls=opts.allow_function_calls_in_expr,
-            allow_subscripts=opts.allow_subscripts_in_expr,
-            allow_method_calls=opts.allow_method_calls_in_expr,
-            allow_private_attributes=opts.allow_private_attributes_in_expr,
-        )
-
-    evaluator = ExpressionEvaluator(policy=policy or ExprPolicy())
-
-    def fail(msg: str, *, path: tuple[Any, ...], node: Any, node_type: str) -> None:
-        raise TemplateValidationError(
-            msg,
-            ctx=ErrorContext(path=path, mark=getattr(node, "mark", None), node_type=node_type),
-        )
-
-    def walk(x: Any, path: tuple[Any, ...] = ()) -> None:
-        # -----------------
-        # Specific nodes
-        # -----------------
-        if isinstance(x, Var):
-            if not isinstance(x.name, str) or not x.name:
-                fail("Var: name must be a non-empty string", path=path, node=x, node_type="Var")
-            if x.default is not UNSET:
-                walk(x.default, path + ("default",))
-            return
-
-        if isinstance(x, Default):
-            if x.default is UNSET:
-                fail(
-                    "Default: requires a fallback under key 'default' (or 'fallback')",
-                    path=path,
-                    node=x,
-                    node_type="Default",
-                )
-            if not isinstance(x.treat_none_as_missing, bool):
-                fail(
-                    "Default: treat_none_as_missing must be boolean",
-                    path=path,
-                    node=x,
-                    node_type="Default",
-                )
-            if not isinstance(x.treat_omit_as_missing, bool):
-                fail(
-                    "Default: treat_omit_as_missing must be boolean",
-                    path=path,
-                    node=x,
-                    node_type="Default",
-                )
-            walk(x.value, path + ("value",))
-            walk(x.default, path + ("default",))
-            return
-
-        if isinstance(x, If):
-            if x.test is None:
-                fail("!if requires 'test'", path=path, node=x, node_type="If")
-            if x.then is None:
-                fail("!if requires 'then'", path=path, node=x, node_type="If")
-            walk(x.test, path + ("test",))
-            walk(x.then, path + ("then",))
-            walk(x.else_, path + ("else",))
-            return
-
-        if isinstance(x, ForEach):
-            if not isinstance(x.var, str) or not x.var:
-                fail("!foreach 'var' must be a non-empty string", path=path, node=x, node_type="ForEach")
-            if x.in_ is None:
-                fail("!foreach requires 'in'", path=path, node=x, node_type="ForEach")
-            if x.into not in ("list", "dict", "set"):
-                fail("!foreach 'into' must be one of: list, dict, set", path=path, node=x, node_type="ForEach")
-
-            if x.into == "dict":
-                if x.key is UNSET or x.value is UNSET:
-                    # Note: YAML loader uses None for explicit null; UNSET is for missing.
-                    fail("!foreach into:dict requires 'key' and 'value'", path=path, node=x, node_type="ForEach")
-                walk(x.key, path + ("key",))
-                walk(x.value, path + ("value",))
-            else:
-                if x.template is UNSET:
-                    fail("!foreach requires 'template' (or use into:dict)", path=path, node=x, node_type="ForEach")
-                walk(x.template, path + ("template",))
-
-            if x.when is not None:
-                walk(x.when, path + ("when",))
-
-            walk(x.in_, path + ("in",))
-
-            if x.index is not None and (not isinstance(x.index, str) or not x.index):
-                fail("!foreach 'index' must be a non-empty string", path=path, node=x, node_type="ForEach")
-            return
-
-        if isinstance(x, Call):
-            if opts is not None and not getattr(opts, "allow_calls", True):
-                fail("!call is disabled by render options", path=path, node=x, node_type="Call")
-
-            if x.args is None:
-                fail("!call 'args' must be a list", path=path, node=x, node_type="Call")
-            if not isinstance(x.args, (list, tuple)):
-                fail("!call 'args' must be a list", path=path, node=x, node_type="Call")
-            if x.kwargs is None:
-                fail("!call 'kwargs' must be a mapping", path=path, node=x, node_type="Call")
-            if not isinstance(x.kwargs, Mapping):
-                fail("!call 'kwargs' must be a mapping", path=path, node=x, node_type="Call")
-
-            walk(x.fn, path + ("fn",))
-            for i, a in enumerate(x.args):
-                walk(a, path + ("args", i))
-            for k, v in x.kwargs.items():
-                walk(v, path + ("kwargs", k))
-            return
-
-        if isinstance(x, IncludeRuntime):
-            if opts is not None and not getattr(opts, "allow_includes", True):
-                fail("!include_rt is disabled by render options", path=path, node=x, node_type="IncludeRuntime")
-            if not isinstance(x.required, bool):
-                fail("!include_rt 'required' must be boolean", path=path, node=x, node_type="IncludeRuntime")
-            walk(x.target, path + ("target",))
-            if x.default is not UNSET:
-                walk(x.default, path + ("default",))
-            return
-
-        if isinstance(x, Pipe):
-            if x.steps is None:
-                fail("!pipe requires 'steps'", path=path, node=x, node_type="Pipe")
-            if not isinstance(x.steps, (list, tuple)):
-                fail("!pipe steps must be a sequence", path=path, node=x, node_type="Pipe")
-            for i, step in enumerate(x.steps):
-                walk(step, path + ("steps", i))
-            return
-
-        if isinstance(x, Expr):
-            if not isinstance(x.expr, str) or not x.expr:
-                fail("!expr requires a non-empty 'expr' string", path=path, node=x, node_type="Expr")
-
-            # ExpressionEvaluator.compile already raises TemplateValidationError
-            # with context for syntax/policy violations.
-            evaluator.compile(
-                x.expr,
-                ctx=ErrorContext(path=path, mark=getattr(x, "mark", None), node_type="Expr"),
+    if allow_non_string:
+        return
+    for k in m.keys():
+        if not isinstance(k, str):
+            raise errors.TemplateValidationError(
+                "Templated dict keys are not supported (use only string keys)",
+                ctx=ctx,
             )
 
-            if x.default is not UNSET:
-                walk(x.default, path + ("default",))
+
+def _validate_foreach(node: nodes.ForEach, *, ctx: errors.ErrorContext) -> None:
+    if not isinstance(node.var, str) or not node.var:
+        raise errors.TemplateValidationError("!foreach 'var' must be a non-empty string", ctx=ctx)
+
+    if node.into not in ("list", "dict", "set"):
+        raise errors.TemplateValidationError("!foreach 'into' must be one of list, dict, set", ctx=ctx)
+
+    if node.into == "dict":
+        if node.key is nodes.UNSET or node.value is nodes.UNSET:
+            raise errors.TemplateValidationError("!foreach into:dict requires key and value", ctx=ctx)
+    else:
+        if node.template is nodes.UNSET:
+            raise errors.TemplateValidationError("!foreach requires 'template'", ctx=ctx)
+
+
+def _validate_python_code(code: str, *, ctx: errors.ErrorContext) -> None:
+    # Best-effort syntax validation. Runtime errors (imports, NameError, etc.) are not validated here.
+    try:
+        compile(code, "<ydst:python>", "exec")
+    except SyntaxError as e:
+        raise errors.TemplateValidationError(f"Invalid python code: {e.msg}", ctx=ctx, cause=e)
+
+
+def validate_template(
+    template: _typing.Any,
+    *,
+    options: render_mod.RenderOptions | None = None,
+    registry: registry_mod.FunctionRegistry | None = None,
+    allow_non_string_mapping_keys: bool = False,
+) -> None:
+    """Validate a template graph for static structural issues.
+
+    This performs conservative checks:
+      - mapping keys must be strings by default (templated keys are intentionally unsupported)
+      - mode/options gates (calls, includes, python tags) are enforced
+      - some node-specific structural invariants are checked
+      - if a registry is provided, string-literal call targets are validated
+    """
+
+    opts = (options or render_mod.RenderOptions()).normalized()
+
+    def walk(x: _typing.Any, path: tuple[_typing.Any, ...]) -> None:
+        ctx = errors.ErrorContext(path=path)
+
+        if isinstance(x, nodes.TemplateNode):
+            # Provide node type and mark if present.
+            ctx = errors.ErrorContext(path=path, node_type=x.__class__.__name__, mark=getattr(x, "mark", None))
+
+            # Option gates
+            if isinstance(x, nodes.Call) and not opts.allow_calls:
+                raise errors.TemplateValidationError("!call is disabled by render options", ctx=ctx)
+            if isinstance(x, nodes.IncludeRuntime) and not opts.allow_includes:
+                raise errors.TemplateValidationError("!include_rt is disabled by render options", ctx=ctx)
+            if isinstance(x, nodes.SetDefault) and not opts.allow_setdefault:
+                raise errors.TemplateValidationError("!setdefault is disabled by render options", ctx=ctx)
+            if isinstance(x, nodes.Python) and not opts.allow_python:
+                raise errors.TemplateValidationError("!python is disabled by render options", ctx=ctx)
+            if isinstance(x, nodes.PythonModule) and not opts.allow_python_module:
+                raise errors.TemplateValidationError("!python_module is disabled by render options", ctx=ctx)
+
+            # Node-specific validations
+            if isinstance(x, nodes.ForEach):
+                _validate_foreach(x, ctx=ctx)
+            elif isinstance(x, nodes.Python):
+                if not isinstance(x.code, str) or not x.code.strip():
+                    raise errors.TemplateValidationError("!python code must be a non-empty string", ctx=ctx)
+                _validate_python_code(x.code, ctx=ctx)
+            elif isinstance(x, nodes.PythonModule):
+                if not isinstance(x.code, str) or not x.code.strip():
+                    raise errors.TemplateValidationError("!python_module code must be a non-empty string", ctx=ctx)
+                _validate_python_code(x.code, ctx=ctx)
+            elif isinstance(x, nodes.SetDefault):
+                for name in x.defaults.keys():
+                    if not isinstance(name, str) or not name:
+                        raise errors.TemplateValidationError("!setdefault names must be non-empty strings", ctx=ctx)
+
+            # Registry checks for literal call targets
+            if isinstance(x, nodes.Call):
+                if registry is not None and isinstance(x.fn, str) and x.fn:
+                    fn = registry.get(x.fn) if hasattr(registry, "get") else None
+                    if fn is None or not callable(fn):
+                        raise errors.TemplateValidationError(
+                            f"!call references unknown function: {x.fn!r}",
+                            ctx=ctx,
+                        )
+
+            # Recurse into fields
+            for field_name, v in nodes.iter_template_node_items(x):
+                walk(v, path + (field_name,))
             return
 
-        # -----------------
-        # Containers and generic nodes
-        # -----------------
-        if isinstance(x, Mapping):
+        # Non-node containers
+        if isinstance(x, _abc.Mapping):
+            _validate_mapping_keys(x, ctx=ctx, allow_non_string=allow_non_string_mapping_keys)
             for k, v in x.items():
-                if isinstance(k, TemplateNode):
-                    fail(
-                        "TemplateNode keys are not allowed in mappings (keys must be concrete)",
-                        path=path,
-                        node=k,
-                        node_type=type(k).__name__,
-                    )
                 walk(k, path + ("<key>",))
                 walk(v, path + (k,))
             return
 
         if isinstance(x, (set, frozenset)):
             for i, v in enumerate(x):
-                walk(v, path + (f"<set_item_{i}>",))
+                walk(v, path + (i,))
             return
 
-        if isinstance(x, Sequence) and not isinstance(x, (str, bytes, bytearray)):
+        if isinstance(x, _abc.Sequence) and not isinstance(x, (str, bytes, bytearray)):
             for i, v in enumerate(x):
                 walk(v, path + (i,))
             return
 
-        if isinstance(x, TemplateNode):
-            # Unknown TemplateNode subclass: recurse into dataclass fields.
-            for k, v in iter_template_node_items(x):
-                walk(v, path + (k,))
-            return
-
-        # Scalars: nothing to validate.
-        return
-
-    walk(template)
+    walk(template, ())

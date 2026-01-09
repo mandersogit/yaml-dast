@@ -67,3 +67,16 @@ Or avoid configuring an `include_resolver` if you do not need `!include`.
 ## Explicit non-goal
 
 ydst does not attempt to safely execute arbitrary Python embedded in YAML. If you need that, run evaluation in a separate hardened environment and treat the result as untrusted until validated.
+
+
+### Embedded Python
+
+Ydst includes two **power tags** that can execute code:
+
+- `!python` — executes embedded Python and emits a value
+- `!python_module` — executes embedded Python in a shared module scope (for helper definitions)
+
+These tags are **disabled by default** and are also disabled by `RenderOptions(mode="locked_down")`.
+
+If you enable them (`allow_python=True` / `allow_python_module=True`), you should treat templates as
+equivalent to running Python code from that source.

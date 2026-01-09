@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from typing import Any
+import typing as _typing
 
-from .nodes import OMIT, Omit
+import ydst.nodes as nodes
 
 
 _JSON_KEY_TYPES = (str, int, float, bool, type(None))
 
 
-def to_jsonable(obj: Any) -> Any:
+def to_jsonable(obj: _typing.Any) -> _typing.Any:
     """Best-effort conversion to JSON-serializable structures.
 
     This helper is intended for downstream tooling (CLIs, API responses, etc.) that
@@ -21,11 +21,11 @@ def to_jsonable(obj: Any) -> Any:
     - dict keys that are not valid JSON key types -> `str(key)`
     """
 
-    if obj is OMIT or isinstance(obj, Omit):
+    if obj is nodes.OMIT or isinstance(obj, nodes.Omit):
         return None
 
     if isinstance(obj, dict):
-        out: dict[Any, Any] = {}
+        out: dict[_typing.Any, _typing.Any] = {}
         for k, v in obj.items():
             kk = k if isinstance(k, _JSON_KEY_TYPES) else str(k)
             out[kk] = to_jsonable(v)
