@@ -34,9 +34,11 @@ class TemplateEngine:
         *,
         include_resolver: Optional[IncludeResolver] = None,
         base_loader: Type[yaml.Loader] = yaml.SafeLoader,
+        max_include_depth: Optional[int] = None,
     ):
         self.include_resolver = include_resolver
         self.base_loader = base_loader
+        self.max_include_depth = max_include_depth
         self._loader_class = self._make_loader_class(base_loader)
         self._custom_tags: Dict[str, Callable[..., Any]] = {}
 
@@ -188,6 +190,15 @@ class TemplateEngine:
             return None if default is UNSET else default
 
         stack = include_stack if include_stack is not None else []
+
+        # Optional depth limiting to prevent pathological include chains.
+        if self.max_include_depth is not None and self.max_include_depth >= 0:
+            if len(stack) >= self.max_include_depth:
+                raise TemplateLoadError(
+                    f"Maximum include depth exceeded (max_include_depth={self.max_include_depth})",
+                    ctx=ErrorContext(mark=mark, node_type="Include"),
+                )
+
         if res.key in stack:
             raise TemplateLoadError(
                 f"Include cycle detected at '{res.key}'",

@@ -59,6 +59,7 @@ class FileIncludeResolver:
         *,
         search_paths: Optional[Sequence[str | Path]] = None,
         encoding: str = "utf-8",
+        max_bytes: Optional[int] = None,
         cache: bool = False,
         cache_max: Optional[int] = None,
         allow_absolute: bool = True,
@@ -67,6 +68,7 @@ class FileIncludeResolver:
     ):
         self.search_paths = [Path(p) for p in (search_paths or [])]
         self.encoding = encoding
+        self.max_bytes = max_bytes
 
         self.allow_absolute = allow_absolute
         self.enforce_roots = enforce_roots
@@ -143,6 +145,17 @@ class FileIncludeResolver:
             if p.exists() and p.is_file():
                 # Optional hardening.
                 self._check_roots(p)
+
+                if self.max_bytes is not None and self.max_bytes >= 0:
+                    try:
+                        size = p.stat().st_size
+                    except Exception:
+                        size = None
+                    if isinstance(size, int) and size > self.max_bytes:
+                        raise ValueError(
+                            f"Include target is too large: {p} ({size} bytes > max_bytes={self.max_bytes})"
+                        )
+
                 content = p.read_text(encoding=self.encoding)
                 res = IncludeResult(content=content, source_name=str(p), key=str(p))
                 if self.cache:

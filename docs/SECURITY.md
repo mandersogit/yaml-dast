@@ -34,6 +34,11 @@ If you need more precise control than `mode`, you can also set:
 - `allow_pipe_registry_calls` (controls whether string stages in `!pipe` can resolve to registry functions)
 - `allow_callable_pipe_stages` (controls direct invocation of callables in `!pipe`)
 
+Expression surface controls:
+
+- `allow_subscripts_in_expr` (controls `x[...]` access in `!expr`)
+- `allow_private_attributes_in_expr` (controls access to `_private` / `__dunder__` attributes when attribute access is enabled)
+
 ## Recommended practices
 
 - Treat templates as trusted inputs.

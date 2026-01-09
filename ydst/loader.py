@@ -150,6 +150,8 @@ def _construct_foreach(loader: yaml.Loader, node: yaml.Node) -> ForEach:
         raise TemplateLoadError("!foreach requires 'in'", ctx=_ctx(mark, "ForEach"))
     in_ = m.get("in")
 
+    # Distinguish missing from explicit null.
+    has_template = "template" in m
     template = m.get("template")
 
     into_raw = m.get("into", "list")
@@ -159,6 +161,9 @@ def _construct_foreach(loader: yaml.Loader, node: yaml.Node) -> ForEach:
 
     index = m.get("index")
     when = m.get("when")
+    # Distinguish missing from explicit null.
+    has_key = "key" in m
+    has_value = "value" in m
     key = m.get("key")
     value = m.get("value")
 
@@ -169,14 +174,16 @@ def _construct_foreach(loader: yaml.Loader, node: yaml.Node) -> ForEach:
         )
 
     if into == "dict":
-        # Require both key and value.
-        if key is None or value is None:
+        # Require both key and value (presence, not truthiness).
+        # YAML `null` is a valid value for key/value templates.
+        if not has_key or not has_value:
             raise TemplateLoadError(
                 "!foreach into:dict requires 'key' and 'value'",
                 ctx=_ctx(mark, "ForEach"),
             )
     else:
-        if template is None:
+        # Require template presence (YAML `null` is valid).
+        if not has_template:
             raise TemplateLoadError(
                 "!foreach requires 'template' (or use into:dict with key/value)",
                 ctx=_ctx(mark, "ForEach"),

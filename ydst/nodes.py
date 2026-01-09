@@ -129,9 +129,6 @@ class Expr(TemplateNode):
     strict: bool = True
     default: Any = field(default_factory=lambda: UNSET)
 
-    # Internal cache (filled by loader/validator) - do not rely on this field externally.
-    _compiled: Any = field(default=None, repr=False, compare=False)
-
 
 @dataclass
 class Call(TemplateNode):

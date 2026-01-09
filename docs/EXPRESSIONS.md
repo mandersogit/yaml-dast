@@ -16,7 +16,7 @@ The expression validator allows:
 - boolean ops: `and`, `or`
 - comparisons: `==`, `!=`, `<`, `<=`, `>`, `>=`, `in`, `not in`, `is`, `is not`
 - ternary expressions: `a if cond else b`
-- subscripts: `x[0]`, `x["k"]`, slices
+- subscripts: `x[0]`, `x["k"]`, slices (configurable)
 - attribute access: `obj.attr` (configurable)
 - function calls: `fn(x)` (configurable; whitelisted)
 
@@ -36,6 +36,7 @@ Attribute access is controlled by:
 Additional safety rules:
 
 - By default, attributes starting with `_` or containing `__` are rejected.
+- You can override this with `RenderOptions(allow_private_attributes_in_expr=True)`.
 - For mapping-like objects, `x.key` will return `x["key"]` if that key exists (convenience for dict-backed context).
 
 ## Function calls
@@ -54,6 +55,14 @@ The render context environment is **not** used as a fallback for function call r
 ### Method calls
 
 Method calls (e.g., `obj.method()`) are disabled by default (`allow_method_calls_in_expr=False`). If enabled, method calls are not name-whitelisted (because the call target has no stable global name), so enabling this should be treated as a trusted-template-only capability.
+
+## Subscripts
+
+Subscripts (indexing and slices) are controlled by:
+
+- `RenderOptions.allow_subscripts_in_expr`
+
+This is enabled by default because it is fundamental for working with dictionaries/lists in configuration templates. If you are evaluating templates from partially untrusted sources, consider disabling it unless you explicitly need it.
 
 ## Missing names
 

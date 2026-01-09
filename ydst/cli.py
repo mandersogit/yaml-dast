@@ -13,7 +13,9 @@ import yaml
 from .engine import TemplateEngine
 from .errors import YdstError
 from .include import FileIncludeResolver
+from .nodes import OMIT, Omit
 from .registry import (
+    FunctionRegistry,
     DictFunctionRegistry,
     chain_registries,
     default_registry,
@@ -52,8 +54,8 @@ def _load_context(
     return obj
 
 
-def _load_registry(module_name: Optional[str], tier: str) -> Optional[DictFunctionRegistry]:
-    reg: Optional[DictFunctionRegistry] = None
+def _load_registry(module_name: Optional[str], tier: str) -> Optional[FunctionRegistry]:
+    reg: Optional[FunctionRegistry] = None
 
     if tier == "default":
         reg = default_registry()
@@ -95,6 +97,9 @@ def _to_jsonable(obj: Any) -> Any:
     We primarily handle Python `set` (unsupported by `json`) by converting it to a stable list.
     We also normalize dict keys that are not valid JSON key types.
     """
+
+    if obj is OMIT or isinstance(obj, Omit):
+        return None
 
     if isinstance(obj, dict):
         out: dict[Any, Any] = {}
@@ -149,6 +154,10 @@ def cmd_render(args: argparse.Namespace) -> None:
     )
 
     out = engine.render(tmpl, context=ctx, registry=registry, options=options)
+
+    # CLI-friendly normalization: a root-level !omit in non-strict mode is serialized as null.
+    if out is OMIT or isinstance(out, Omit):
+        out = None
 
     if args.output == "json":
         json.dump(_to_jsonable(out), sys.stdout, indent=2, sort_keys=False)

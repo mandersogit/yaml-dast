@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.1.5 (2026-01-02)
+
+### Correctness
+
+- `!foreach` now treats `template: null` (and `key: null` / `value: null`) as *present* instead of raising a load error.
+- `!foreach` error contexts now retain the iteration index for `when:` evaluation and for `into:dict` / `into:set` post-render checks (duplicate keys, unhashable outputs).
+- CLI `ydst render` now serializes a root-level `!omit` in non-strict mode as `null` (YAML/JSON), and the JSON conversion now handles `OMIT` defensively.
+
+### API / ergonomics
+
+- `RenderOptions` now exposes the remaining `ExprPolicy` controls: `allow_subscripts_in_expr` and `allow_private_attributes_in_expr`.
+- `validate_template()` is now validation-only and does not mutate templates; the unused internal `Expr._compiled` cache was removed.
+- Improved error paths for `!call` arguments/kwargs and `!pipe` stages (structured `$.args[0]` / `$.pipe[1]` paths).
+
+### Security / hardening
+
+- `FileIncludeResolver` now supports `max_bytes=...` to bound include file size.
+- `TemplateEngine(max_include_depth=...)` (and render-time includes) can now enforce maximum include nesting depth.
+- `runtime_include_cache_max` is now bounded by default (128) to avoid unbounded per-render caching.
+
 ## 0.1.4 (2026-01-02)
 
 ### Correctness

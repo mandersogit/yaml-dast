@@ -39,6 +39,8 @@ YAML:
 
 When producing JSON, sets are converted to sorted lists for JSON compatibility.
 
+In non-strict mode (`--non-strict`), a root-level `!omit` renders as JSON/YAML `null` in the CLI (the library API still returns the `OMIT` sentinel).
+
 ## Includes
 
 ```bash

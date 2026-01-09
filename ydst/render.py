@@ -84,7 +84,12 @@ class RenderOptions:
     # -----------------
     allow_attribute_access_in_expr: bool = True
     allow_function_calls_in_expr: bool = True
+    allow_subscripts_in_expr: bool = True
     allow_method_calls_in_expr: bool = False
+
+    # If True, allow attribute names that begin with '_' or contain '__'.
+    # By default these are rejected even when attribute access is enabled.
+    allow_private_attributes_in_expr: bool = False
 
     # -----------------
     # !call policy
@@ -130,7 +135,10 @@ class RenderOptions:
     # Render-time include caching.
     # Caches parsed templates (not raw file content) within a single render invocation.
     cache_runtime_includes: bool = True
-    runtime_include_cache_max: Optional[int] = None
+    # By default we keep a modest per-render cache to avoid repeatedly parsing the same
+    # included templates while still bounding memory use for templates that include many
+    # distinct targets.
+    runtime_include_cache_max: Optional[int] = 128
 
     # If True, wrap foreign exceptions with RenderError subclasses preserving causes.
     # If False, raw exceptions from registry/expr/include-resolvers propagate (useful for debugging).
@@ -149,6 +157,8 @@ class RenderOptions:
             o.allow_attribute_access_in_expr = False
             o.allow_function_calls_in_expr = False
             o.allow_method_calls_in_expr = False
+            # When attribute access is disabled, private attribute policy is moot.
+            o.allow_private_attributes_in_expr = False
             # Also disallow implicit callable stages in !pipe, since this bypasses the registry.
             o.allow_callable_pipe_stages = False
 
@@ -157,6 +167,8 @@ class RenderOptions:
             o.allow_attribute_access_in_expr = False
             o.allow_function_calls_in_expr = False
             o.allow_method_calls_in_expr = False
+            # Prefer a stricter expression surface by default.
+            o.allow_private_attributes_in_expr = False
             o.allow_callable_pipe_stages = False
 
             # And additionally disable the main "escape hatches".
@@ -223,7 +235,9 @@ def render_template(
     policy = ExprPolicy(
         allow_attribute_access=ctx.options.allow_attribute_access_in_expr,
         allow_function_calls=ctx.options.allow_function_calls_in_expr,
+        allow_subscripts=ctx.options.allow_subscripts_in_expr,
         allow_method_calls=ctx.options.allow_method_calls_in_expr,
+        allow_private_attributes=ctx.options.allow_private_attributes_in_expr,
     )
 
     def _fn_resolver(name: str) -> Optional[Callable[..., Any]]:
@@ -366,6 +380,28 @@ def _render_any(value: Any, ctx: RenderContext) -> Any:
                 out_list.append(ri)
             return out_list
 
+        # Sets / frozensets are treated as containers as well.
+        # Note: sets are unordered; the numeric path index reflects iteration order.
+        if isinstance(value, (set, frozenset)):
+            out_set: set[Any] = set()
+            for i, item in enumerate(value):
+                ctx.path.append(i)
+                try:
+                    ri = _render_any(item, ctx)
+                    if ri is OMIT or isinstance(ri, Omit):
+                        continue
+                    try:
+                        out_set.add(ri)
+                    except TypeError as e:
+                        raise RenderError(
+                            f"Set elements must be hashable (got {ri!r})",
+                            ctx=ErrorContext(path=tuple(ctx.path), node_type="SetElement"),
+                            cause=e if ctx.options.wrap_exceptions else None,
+                        )
+                finally:
+                    ctx.path.pop()
+            return out_set
+
         # Scalars
         return value
 
@@ -491,6 +527,10 @@ def _render_foreach(node: ForEach, ctx: RenderContext) -> Any:
 
         old_scope = ctx.scope
         ctx.scope = ctx.scope.new_child(frame)
+        # Keep the iteration index on the path for the entire per-item processing.
+        # This materially improves error localization for duplicate keys and unhashable
+        # outputs, and also makes `when:` failures point at the correct iteration.
+        ctx.path.append(idx)
         try:
             if node.when is not None:
                 ctx.path.append("when")
@@ -502,21 +542,13 @@ def _render_foreach(node: ForEach, ctx: RenderContext) -> Any:
                     continue
 
             if into == "list":
-                ctx.path.append(idx)
-                try:
-                    rendered = _render_any(node.template, ctx)
-                finally:
-                    ctx.path.pop()
+                rendered = _render_any(node.template, ctx)
                 if rendered is OMIT or isinstance(rendered, Omit):
                     continue
                 out_list.append(rendered)
 
             elif into == "set":
-                ctx.path.append(idx)
-                try:
-                    rendered = _render_any(node.template, ctx)
-                finally:
-                    ctx.path.pop()
+                rendered = _render_any(node.template, ctx)
                 if rendered is OMIT or isinstance(rendered, Omit):
                     continue
                 try:
@@ -529,24 +561,23 @@ def _render_foreach(node: ForEach, ctx: RenderContext) -> Any:
                     )
 
             else:  # dict
-                ctx.path.append(idx)
+                ctx.path.append("key")
                 try:
-                    ctx.path.append("key")
-                    try:
-                        rk = _render_any(node.key, ctx)
-                    finally:
-                        ctx.path.pop()
+                    rk = _render_any(node.key, ctx)
+                finally:
+                    ctx.path.pop()
 
-                    ctx.path.append("value")
-                    try:
-                        rv = _render_any(node.value, ctx)
-                    finally:
-                        ctx.path.pop()
+                ctx.path.append("value")
+                try:
+                    rv = _render_any(node.value, ctx)
                 finally:
                     ctx.path.pop()
 
                 if rk is OMIT or isinstance(rk, Omit) or rv is OMIT or isinstance(rv, Omit):
                     continue
+
+                # Ensure key is hashable; keep path pointing at the key.
+                ctx.path.append("key")
                 try:
                     hash(rk)
                 except Exception as e:
@@ -555,18 +586,21 @@ def _render_foreach(node: ForEach, ctx: RenderContext) -> Any:
                         ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="ForEach"),
                         cause=e if ctx.options.wrap_exceptions else None,
                     )
+                finally:
+                    ctx.path.pop()
 
                 if rk in out_dict:
                     if conflict == "error":
                         raise RenderError(
                             f"Duplicate key produced by !foreach into:dict: {rk!r}",
-                            ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="ForEach"),
+                            ctx=ErrorContext(path=tuple(ctx.path) + ("key",), mark=node.mark, node_type="ForEach"),
                         )
                     if conflict == "first":
                         continue
                     # last-wins
                 out_dict[rk] = rv
         finally:
+            ctx.path.pop()
             ctx.scope = old_scope
 
     if into == "list":
@@ -591,7 +625,9 @@ def _render_expr(node: Expr, ctx: RenderContext) -> Any:
         policy = ExprPolicy(
             allow_attribute_access=ctx.options.allow_attribute_access_in_expr,
             allow_function_calls=ctx.options.allow_function_calls_in_expr,
+            allow_subscripts=ctx.options.allow_subscripts_in_expr,
             allow_method_calls=ctx.options.allow_method_calls_in_expr,
+            allow_private_attributes=ctx.options.allow_private_attributes_in_expr,
         )
 
         def _fn_resolver(name: str) -> Optional[Callable[..., Any]]:
@@ -689,18 +725,22 @@ def _render_call(node: Call, ctx: RenderContext, *, pipe_input: Any = None, incl
         args.append(pipe_input)
 
     for i, a in enumerate(node.args):
-        ctx.path.append(f"args[{i}]")
+        ctx.path.append("args")
+        ctx.path.append(i)
         try:
             args.append(_render_any(a, ctx))
         finally:
             ctx.path.pop()
+            ctx.path.pop()
 
     kwargs = {}
     for k, v in node.kwargs.items():
-        ctx.path.append(f"kwargs[{k}]")
+        ctx.path.append("kwargs")
+        ctx.path.append(k)
         try:
             kwargs[k] = _render_any(v, ctx)
         finally:
+            ctx.path.pop()
             ctx.path.pop()
 
     try:
@@ -720,17 +760,20 @@ def _render_pipe(node: Any, ctx: RenderContext) -> Any:
     if not steps:
         return OMIT
 
-    ctx.path.append("pipe[0]")
+    ctx.path.append("pipe")
+    ctx.path.append(0)
     try:
         value = _render_any(steps[0], ctx)
     finally:
+        ctx.path.pop()
         ctx.path.pop()
 
     if value is OMIT or isinstance(value, Omit):
         return OMIT
 
     for i, stage in enumerate(steps[1:], start=1):
-        ctx.path.append(f"pipe[{i}]")
+        ctx.path.append("pipe")
+        ctx.path.append(i)
         try:
             if isinstance(stage, Call):
                 value = _render_call(stage, ctx, pipe_input=value, include_pipe_input=True)
@@ -804,6 +847,7 @@ def _render_pipe(node: Any, ctx: RenderContext) -> Any:
             value = rendered_stage
         finally:
             ctx.path.pop()
+            ctx.path.pop()
 
     return value
 
@@ -856,6 +900,16 @@ def _render_include_runtime(node: IncludeRuntime, ctx: RenderContext) -> Any:
         if node.default is not UNSET:
             return _render_any(node.default, ctx)
         return None
+
+    # Optional include depth limiting (mirrors TemplateEngine load-time includes).
+    if ctx.engine is not None:
+        max_depth = getattr(ctx.engine, "max_include_depth", None)
+        if max_depth is not None and max_depth >= 0:
+            if len(ctx.include_stack) >= max_depth:
+                raise IncludeError(
+                    f"Maximum include depth exceeded (max_include_depth={max_depth})",
+                    ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="IncludeRuntime"),
+                )
 
     if res.key in ctx.include_stack:
         raise IncludeCycleError(

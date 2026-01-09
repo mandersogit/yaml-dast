@@ -32,6 +32,9 @@ resolver = FileIncludeResolver(search_paths=[".", "./configs"])
 # - caches both hits and misses
 # - LRU-ish eviction via cache_max
 cached_resolver = FileIncludeResolver(search_paths=[".", "./configs"], cache=True, cache_max=256)
+
+# Optional: bound the maximum file size read by the resolver.
+bounded_resolver = FileIncludeResolver(search_paths=[".", "./configs"], max_bytes=1_000_000)
 ```
 
 Hardening options (useful if include targets are partially user-controlled):
@@ -78,6 +81,12 @@ Default behavior for missing load-time includes:
 
 Cycle detection is enforced by tracking include keys during a single load operation.
 
+If you need to guard against pathological include chains, you can also configure a maximum include depth:
+
+```python
+engine = TemplateEngine(include_resolver=resolver, max_include_depth=32)
+```
+
 ## Render-time include (`!include_rt`)
 
 Render-time includes are resolved during rendering. This is useful when the include target depends on context:
@@ -98,6 +107,10 @@ Notes:
   You can control this via:
   - `RenderOptions(cache_runtime_includes=...)`
   - `RenderOptions(runtime_include_cache_max=...)`
+
+The default `runtime_include_cache_max` is `128` (set to `None` for unbounded caching).
+
+The default `runtime_include_cache_max` is 128 to keep memory bounded.
 
 ## Security note
 

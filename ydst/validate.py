@@ -35,6 +35,10 @@ def collect_variables(template: Any) -> Set[str]:
                 walk(k)
                 walk(v)
             return
+        if isinstance(x, (set, frozenset)):
+            for v in x:
+                walk(v)
+            return
         if isinstance(x, Sequence) and not isinstance(x, (str, bytes, bytearray)):
             for v in x:
                 walk(v)
@@ -51,8 +55,13 @@ def validate_template(
 ) -> None:
     """Static validation.
 
-    Currently validates:
+    This function is intentionally *validation-only*.
+
+    It currently validates:
       - !expr syntax and allowed constructs (per policy)
+      - templated mapping keys are rejected (use !foreach into:dict)
+
+    The template object graph is not mutated.
     """
     evaluator = ExpressionEvaluator(policy=policy or ExprPolicy())
 
@@ -60,12 +69,11 @@ def validate_template(
         if isinstance(x, Expr):
             ctx = ErrorContext(path=path, mark=x.mark, node_type="Expr")
             try:
-                compiled = evaluator.compile(x.expr, ctx=ctx)
+                evaluator.compile(x.expr, ctx=ctx)
             except TemplateValidationError:
                 raise
             except Exception as e:
                 raise TemplateValidationError(str(e), ctx=ctx, cause=e)
-            x._compiled = compiled
             # Validate default subtree too
             if x.default is not UNSET:
                 walk(x.default, path + ("default",))
@@ -82,8 +90,18 @@ def validate_template(
 
         if isinstance(x, _Mapping):
             for k, v in x.items():
+                if isinstance(k, TemplateNode):
+                    raise TemplateValidationError(
+                        "Templated mapping keys are not supported (use !foreach into:dict)",
+                        ctx=ErrorContext(path=path + ("<key>",), mark=getattr(k, "mark", None), node_type="MappingKey"),
+                    )
                 walk(k, path + ("<key>",))
                 walk(v, path + (k,))
+            return
+
+        if isinstance(x, (set, frozenset)):
+            for i, v in enumerate(x):
+                walk(v, path + (i,))
             return
 
         if isinstance(x, _Sequence) and not isinstance(x, (str, bytes, bytearray)):

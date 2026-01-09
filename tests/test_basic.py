@@ -62,6 +62,39 @@ m: !foreach
         out = eng.render(tmpl, context={"xs": [1, 2, 3]}, registry=default_registry())
         self.assertEqual(out["m"], {1: 1, 2: 4, 3: 9})
 
+    def test_foreach_allows_explicit_null_template_key_value(self):
+        eng = TemplateEngine()
+
+        tmpl_list = eng.load_template(
+            """
+x: !foreach
+  in: [1, 2, 3]
+  template: null
+"""
+        )
+        self.assertEqual(eng.render(tmpl_list), {"x": [None, None, None]})
+
+        tmpl_set = eng.load_template(
+            """
+x: !foreach
+  in: [1, 2]
+  into: set
+  template: null
+"""
+        )
+        self.assertEqual(eng.render(tmpl_set), {"x": {None}})
+
+        tmpl_dict = eng.load_template(
+            """
+x: !foreach
+  in: [1]
+  into: dict
+  key: null
+  value: null
+"""
+        )
+        self.assertEqual(eng.render(tmpl_dict), {"x": {None: None}})
+
     def test_call_and_pipe(self):
         eng = TemplateEngine()
         tmpl = eng.load_template(
@@ -121,8 +154,11 @@ m: !foreach
         self.assertEqual(out["m"], {1: 1})
 
         # strict with error
-        with self.assertRaises(Exception):
+        with self.assertRaises(RenderError) as cm:
             eng.render(tmpl, registry=default_registry(), options=RenderOptions(dict_key_conflict="error"))
+
+        # Ensure the error path includes the iteration index that caused the conflict.
+        self.assertIn("path=$.m[1].key", str(cm.exception))
 
     def test_expr_calls_with_chained_registry(self):
         eng = TemplateEngine()
@@ -157,9 +193,33 @@ m: !foreach
 
     def test_expr_private_attributes_rejected(self):
         eng = TemplateEngine()
-        tmpl = eng.load_template("x: !expr \"obj.__class__\"\n")
+        tmpl = eng.load_template("x: !expr \"obj.__class__.__name__\"\n")
         with self.assertRaises(ExpressionError):
             eng.render(tmpl, context={"obj": object()}, registry=default_registry())
+
+        # Opt-in: allow private/dunder attribute access.
+        out = eng.render(
+            tmpl,
+            context={"obj": object()},
+            registry=default_registry(),
+            options=RenderOptions(allow_private_attributes_in_expr=True),
+        )
+        self.assertEqual(out["x"], "object")
+
+    def test_expr_subscripts_policy_toggle(self):
+        eng = TemplateEngine()
+        tmpl = eng.load_template("x: !expr \"d['a']\"\n")
+
+        with self.assertRaises(ExpressionError):
+            eng.render(
+                tmpl,
+                context={"d": {"a": 1}},
+                registry=default_registry(),
+                options=RenderOptions(allow_subscripts_in_expr=False),
+            )
+
+        out = eng.render(tmpl, context={"d": {"a": 1}}, registry=default_registry())
+        self.assertEqual(out, {"x": 1})
 
     def test_safe_mode_disables_expr_calls(self):
         eng = TemplateEngine()
