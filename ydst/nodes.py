@@ -151,7 +151,9 @@ class ForEach(TemplateNode):
 
     var: str = "item"
     in_: Any = None
-    template: Any = None
+    # Presence-sensitive. Use UNSET to represent "missing" so programmatic construction
+    # can be validated consistently with YAML-loaded templates.
+    template: Any = field(default_factory=lambda: UNSET)
 
     # Optional additions
     index: Optional[str] = None
@@ -161,8 +163,8 @@ class ForEach(TemplateNode):
     into: str = "list"
 
     # Dict output fields
-    key: Any = None
-    value: Any = None
+    key: Any = field(default_factory=lambda: UNSET)
+    value: Any = field(default_factory=lambda: UNSET)
 
 
 @dataclass(frozen=True, slots=True)

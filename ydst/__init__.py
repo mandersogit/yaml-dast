@@ -10,7 +10,15 @@ See README.md for usage examples.
 """
 
 from .engine import TemplateEngine
-from .api import load_template, load_template_text, load_template_file, render
+from .api import (
+    load_template,
+    load_template_text,
+    load_template_file,
+    render,
+    safe_engine,
+    safe_render,
+)
+from .render import RenderOptions, TraceEvent
 from .normalize import to_jsonable
 from .nodes import (
     SourceMark,
@@ -67,7 +75,12 @@ __all__ = [
     "load_template_text",
     "load_template_file",
     "render",
+    "safe_engine",
+    "safe_render",
     "to_jsonable",
+    # Render primitives
+    "RenderOptions",
+    "TraceEvent",
     # Validation / analysis
     "validate_template",
     "collect_variables",

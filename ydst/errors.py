@@ -56,7 +56,13 @@ class ErrorContext:
     node_type: Optional[str] = None
 
 
-class TemplateLoadError(YdstError):
+class ContextualError(YdstError):
+    """Base class for errors that carry an :class:`ErrorContext`.
+
+    This centralizes formatting logic so `TemplateLoadError`, `TemplateValidationError`,
+    and `RenderError` remain consistent.
+    """
+
     def __init__(self, message: str, *, ctx: Optional[ErrorContext] = None, cause: Exception | None = None):
         super().__init__(message)
         self.ctx = ctx or ErrorContext()
@@ -73,39 +79,16 @@ class TemplateLoadError(YdstError):
         return self.pretty()
 
 
-class TemplateValidationError(YdstError):
-    def __init__(self, message: str, *, ctx: Optional[ErrorContext] = None, cause: Exception | None = None):
-        super().__init__(message)
-        self.ctx = ctx or ErrorContext()
-        if cause is not None:
-            self.__cause__ = cause
-
-    def pretty(self) -> str:
-        p = format_path(self.ctx.path)
-        m = format_mark(self.ctx.mark)
-        n = self.ctx.node_type or "<node>"
-        return f"{self.__class__.__name__}: {self.args[0]} (path={p}, node={n}, at={m})"
-
-    def __str__(self) -> str:
-        return self.pretty()
+class TemplateLoadError(ContextualError):
+    pass
 
 
-class RenderError(YdstError):
-    def __init__(self, message: str, *, ctx: Optional[ErrorContext] = None, cause: Exception | None = None):
-        super().__init__(message)
-        self.ctx = ctx or ErrorContext()
-        if cause is not None:
-            self.__cause__ = cause
+class TemplateValidationError(ContextualError):
+    pass
 
-    def pretty(self) -> str:
-        p = format_path(self.ctx.path)
-        m = format_mark(self.ctx.mark)
-        n = self.ctx.node_type or "<node>"
-        return f"{self.__class__.__name__}: {self.args[0]} (path={p}, node={n}, at={m})"
 
-    def __str__(self) -> str:
-        # Prefer the contextualized form; keep the raw message in `.args[0]`.
-        return self.pretty()
+class RenderError(ContextualError):
+    """Runtime rendering error."""
 
 
 class MissingVariableError(RenderError):

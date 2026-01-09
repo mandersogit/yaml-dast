@@ -2,7 +2,17 @@ import unittest
 from pathlib import Path
 import tempfile
 
-from ydst import TemplateEngine, FileIncludeResolver, default_registry, TemplateValidationError, ExpressionError, TemplateLoadError
+from ydst import (
+    TemplateEngine,
+    FileIncludeResolver,
+    default_registry,
+    TemplateValidationError,
+    ExpressionError,
+    TemplateLoadError,
+    RenderError,
+    ForEach,
+    validate_template,
+)
 from ydst.render import RenderOptions
 
 
@@ -70,6 +80,30 @@ class TestPolicyAndLoaderControls(unittest.TestCase):
 
             with self.assertRaises(TemplateLoadError):
                 eng.load_template_file(p / "b.yaml")
+
+
+class TestProgrammaticTemplateValidation(unittest.TestCase):
+    def test_foreach_missing_template_is_validation_error(self):
+        node = ForEach(in_=[1, 2, 3])
+        with self.assertRaises(TemplateValidationError):
+            validate_template(node)
+
+    def test_foreach_missing_template_is_render_error(self):
+        node = ForEach(in_=[1, 2, 3])
+        eng = TemplateEngine()
+        with self.assertRaises(RenderError):
+            eng.render(node, context={})
+
+    def test_foreach_dict_missing_key_value_is_validation_error(self):
+        node = ForEach(in_=[{"a": 1}], into="dict")
+        with self.assertRaises(TemplateValidationError):
+            validate_template(node)
+
+    def test_foreach_dict_missing_key_value_is_render_error(self):
+        node = ForEach(in_=[{"a": 1}], into="dict")
+        eng = TemplateEngine()
+        with self.assertRaises(RenderError):
+            eng.render(node, context={})
 
 
 if __name__ == "__main__":

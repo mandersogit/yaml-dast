@@ -92,17 +92,10 @@ class FileIncludeResolver:
 
         for root in self.roots:
             try:
-                if resolved_path.is_relative_to(root):
-                    return
+                resolved_path.relative_to(root)
+                return
             except Exception:
-                # Older/edge Path implementations; fall back to string prefix.
-                try:
-                    rp = str(resolved_path)
-                    rr = str(root)
-                    if rp.startswith(rr.rstrip("/") + "/") or rp == rr:
-                        return
-                except Exception:
-                    pass
+                continue
 
         roots_str = ", ".join(str(r) for r in self.roots)
         raise ValueError(f"Resolved include path is outside allowed roots: {resolved_path} (roots: {roots_str})")

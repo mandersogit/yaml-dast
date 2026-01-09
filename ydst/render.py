@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import warnings
-
 from collections import ChainMap
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -557,6 +555,20 @@ def _iter_foreach_items(value: Any, *, materialize: bool) -> Any:
 
 
 def _render_foreach(node: ForEach, ctx: RenderContext) -> Any:
+    # Defensive validation for programmatic construction. YAML-loaded templates
+    # should have been validated by the loader constructors.
+    into = (node.into or "list").lower()
+    if into in ("list", "set") and node.template is UNSET:
+        raise RenderError(
+            "!foreach requires 'template' for into:list/set",
+            ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="ForEach"),
+        )
+    if into == "dict" and (node.key is UNSET or node.value is UNSET):
+        raise RenderError(
+            "!foreach requires both 'key' and 'value' for into:dict",
+            ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="ForEach"),
+        )
+
     ctx.path.append("in")
     try:
         seq_val = _render_any(node.in_, ctx)
@@ -572,7 +584,7 @@ def _render_foreach(node: ForEach, ctx: RenderContext) -> Any:
             cause=e if ctx.options.wrap_exceptions else None,
         )
 
-    into = (node.into or "list").lower()
+    # `into` was already normalized above.
     if into == "list":
         out_list: list[Any] = []
     elif into == "dict":

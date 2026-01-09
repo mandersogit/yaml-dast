@@ -69,10 +69,28 @@ Render a template with a JSON context:
 ydst render template.yaml --context-file ctx.json
 ```
 
-Enable a built-in registry tier (required if your template uses `!call` or calls functions inside `!expr`):
+The CLI enables the `safe` registry tier by default. To disable registries entirely:
+
+```bash
+ydst render template.yaml --context-file ctx.json --registry-tier none
+```
+
+Enable a built-in registry tier explicitly:
 
 ```bash
 ydst render template.yaml --context-file ctx.json --registry-tier safe
+```
+
+Validate a template without rendering:
+
+```bash
+ydst validate template.yaml
+```
+
+Analyze static dependencies:
+
+```bash
+ydst deps template.yaml
 ```
 
 ## Notes

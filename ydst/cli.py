@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import asdict
 import importlib
 import json
 import sys
@@ -13,7 +14,7 @@ import yaml
 from .engine import TemplateEngine
 from .errors import YdstError, format_path, format_mark
 from .include import FileIncludeResolver
-from .nodes import OMIT, Omit
+from .analysis import analyze_dependencies
 from .registry import (
     FunctionRegistry,
     DictFunctionRegistry,
@@ -24,6 +25,7 @@ from .registry import (
 )
 from .render import RenderOptions
 from .normalize import to_jsonable
+from .validate import validate_template
 
 
 def _load_context(
@@ -127,28 +129,40 @@ def _build_trace_sink(trace_file: Optional[str]) -> tuple[Optional[callable], Op
 
     return sink, fh
 
-def cmd_render(args: argparse.Namespace) -> None:
+
+def _build_engine_from_args(args: argparse.Namespace) -> TemplateEngine:
+    """Build a TemplateEngine configured from common CLI flags."""
+
     include_resolver = None
-    if args.include_path:
+    if getattr(args, "include_path", None):
         include_resolver = FileIncludeResolver(
-            search_paths=[Path(p) for p in args.include_path],
-            allow_absolute=not args.include_disallow_absolute,
-            enforce_roots=args.include_enforce_roots,
+            search_paths=[Path(p) for p in getattr(args, "include_path", [])],
+            allow_absolute=not getattr(args, "include_disallow_absolute", False),
+            enforce_roots=getattr(args, "include_enforce_roots", False),
         )
 
-    base_loader = yaml.FullLoader if args.full_loader else yaml.SafeLoader
-    engine = TemplateEngine(
+    base_loader = yaml.FullLoader if getattr(args, "full_loader", False) else yaml.SafeLoader
+    return TemplateEngine(
         include_resolver=include_resolver,
         base_loader=base_loader,
-        max_include_depth=args.max_include_depth,
-        allow_load_time_includes=not args.disable_load_includes,
+        max_include_depth=getattr(args, "max_include_depth", None),
+        allow_load_time_includes=not getattr(args, "disable_load_includes", False),
     )
 
-    if args.template == "-":
+
+def _load_template_arg(engine: TemplateEngine, template_arg: str) -> Any:
+    """Load a template from a CLI template argument (path or '-' for stdin)."""
+
+    if template_arg == "-":
         template_src = sys.stdin.read()
-        tmpl = engine.load_template_text(template_src, source_name="<stdin>")
-    else:
-        tmpl = engine.load_template_file(args.template)
+        return engine.load_template_text(template_src, source_name="<stdin>")
+    return engine.load_template_file(template_arg)
+
+
+
+def cmd_render(args: argparse.Namespace) -> None:
+    engine = _build_engine_from_args(args)
+    tmpl = _load_template_arg(engine, args.template)
 
     ctx = _load_context(
         context_json_file=args.context_file,
@@ -179,10 +193,6 @@ def cmd_render(args: argparse.Namespace) -> None:
 
     out = engine.render(tmpl, context=ctx, registry=registry, options=options)
 
-    # CLI-friendly normalization: a root-level !omit in non-strict mode is serialized as null.
-    if out is OMIT or isinstance(out, Omit):
-        out = None
-
     output_stream = sys.stdout
     out_fh = None
     if getattr(args, "output_file", None):
@@ -202,8 +212,81 @@ def cmd_render(args: argparse.Namespace) -> None:
             trace_fh.close()
 
 
+def cmd_validate(args: argparse.Namespace) -> None:
+    """Parse and validate a template without rendering."""
+
+    engine = _build_engine_from_args(args)
+    tmpl = _load_template_arg(engine, args.template)
+
+    opts = RenderOptions(mode=args.mode, strict=not args.non_strict)
+    validate_template(tmpl, options=opts)
+
+    if not getattr(args, "quiet", False):
+        sys.stdout.write("OK\n")
+
+
+def cmd_deps(args: argparse.Namespace) -> None:
+    """Analyze a template's static dependencies (vars, calls, includes, expressions)."""
+
+    engine = _build_engine_from_args(args)
+    tmpl = _load_template_arg(engine, args.template)
+
+    registry = _load_registry(getattr(args, "registry_module", None), getattr(args, "registry_tier", "none"))
+    deps = analyze_dependencies(tmpl, registry=registry)
+
+    payload = to_jsonable(asdict(deps))
+
+    output_stream = sys.stdout
+    out_fh = None
+    if getattr(args, "output_file", None):
+        out_fh = open(args.output_file, "w", encoding="utf-8")
+        output_stream = out_fh
+
+    try:
+        json.dump(payload, output_stream, indent=2, sort_keys=False)
+        output_stream.write("\n")
+    finally:
+        if out_fh is not None:
+            out_fh.close()
+
+
+def _add_engine_flags(parser: argparse.ArgumentParser) -> None:
+    """Add common flags related to template loading and includes."""
+
+    parser.add_argument(
+        "--include-path",
+        action="append",
+        default=[],
+        help="Add an include search path (repeatable)",
+    )
+    parser.add_argument("--include-disallow-absolute", action="store_true", help="Disallow absolute include targets")
+    parser.add_argument(
+        "--include-enforce-roots",
+        action="store_true",
+        help="Require includes to resolve under include-path roots",
+    )
+
+    parser.add_argument(
+        "--full-loader",
+        action="store_true",
+        help="Use yaml.FullLoader instead of SafeLoader (trusted templates only; more permissive)",
+    )
+
+    parser.add_argument(
+        "--max-include-depth",
+        type=int,
+        default=None,
+        help="Maximum include depth for load-time !include expansion",
+    )
+    parser.add_argument(
+        "--disable-load-includes",
+        action="store_true",
+        help="Disable load-time includes (!include)",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="ydst", description="Render YAML data-structure templates.")
+    p = argparse.ArgumentParser(prog="ydst", description="YAML data-structure templates.")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     r = sub.add_parser("render", help="Render a template")
@@ -219,20 +302,12 @@ def build_parser() -> argparse.ArgumentParser:
     reg_group.add_argument(
         "--registry-tier",
         choices=["none", "minimal", "safe", "extended"],
-        default="none",
-        help="Enable a built-in registry tier",
+        default="safe",
+        help="Enable a built-in registry tier (default: safe; use 'none' to disable)",
     )
     r.add_argument("--registry-module", help="Python module providing REGISTRY or registry")
 
-    r.add_argument("--include-path", action="append", default=[], help="Add an include search path (repeatable)")
-    r.add_argument("--include-disallow-absolute", action="store_true", help="Disallow absolute include targets")
-    r.add_argument(
-        "--include-enforce-roots",
-        action="store_true",
-        help="Require includes to resolve under include-path roots",
-    )
-
-    r.add_argument("--full-loader", action="store_true", help="Use yaml.FullLoader instead of SafeLoader")
+    _add_engine_flags(r)
 
     r.add_argument("--mode", choices=["trusted", "expr_safe", "locked_down"], default="trusted")
     r.add_argument("--non-strict", action="store_true", help="Non-strict mode (missing vars -> None/defaults)")
@@ -263,18 +338,6 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--max-depth", type=int, default=200)
     r.add_argument("--max-nodes", type=int, default=None)
 
-    r.add_argument(
-        "--max-include-depth",
-        type=int,
-        default=None,
-        help="Maximum include depth for load-time !include expansion",
-    )
-    r.add_argument(
-        "--disable-load-includes",
-        action="store_true",
-        help="Disable load-time includes (!include)",
-    )
-
     r.add_argument("--output", choices=["json", "yaml"], default="json")
     r.add_argument("--output-file", help="Write output to a file instead of stdout")
 
@@ -284,6 +347,37 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--debug", action="store_true", help="Show full tracebacks on error")
 
     r.set_defaults(func=cmd_render)
+
+    # -----------------
+    # validate
+    # -----------------
+    v = sub.add_parser("validate", help="Parse and validate a template")
+    v.add_argument("template", help="Template file path, or '-' for stdin")
+    _add_engine_flags(v)
+    v.add_argument("--mode", choices=["trusted", "expr_safe", "locked_down"], default="trusted")
+    v.add_argument("--non-strict", action="store_true", help="Non-strict mode (missing vars -> None/defaults)")
+    v.add_argument("--quiet", action="store_true", help="Only set exit code; do not print 'OK'")
+    v.add_argument("--debug", action="store_true", help="Show full tracebacks on error")
+    v.set_defaults(func=cmd_validate)
+
+    # -----------------
+    # deps
+    # -----------------
+    d = sub.add_parser("deps", help="Analyze a template's static dependencies")
+    d.add_argument("template", help="Template file path, or '-' for stdin")
+    _add_engine_flags(d)
+
+    d_reg_group = d.add_mutually_exclusive_group()
+    d_reg_group.add_argument(
+        "--registry-tier",
+        choices=["none", "minimal", "safe", "extended"],
+        default="safe",
+        help="Enable a built-in registry tier (default: safe; use 'none' to disable)",
+    )
+    d.add_argument("--registry-module", help="Python module providing REGISTRY or registry")
+    d.add_argument("--output-file", help="Write output to a file instead of stdout")
+    d.add_argument("--debug", action="store_true", help="Show full tracebacks on error")
+    d.set_defaults(func=cmd_deps)
 
     return p
 

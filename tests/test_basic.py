@@ -8,6 +8,7 @@ from ydst import (
     default_registry,
     OMIT,
     RenderError,
+    RootOmitError,
     ExpressionError,
     TemplateLoadError,
 )
@@ -33,6 +34,12 @@ c: !if
 
         out2 = eng.render(tmpl, context={"x": 1}, registry=default_registry())
         self.assertEqual(out2, {"a": 1, "b": 1})
+
+    def test_root_omit_is_error(self):
+        eng = TemplateEngine()
+        tmpl = eng.load_template_text("!omit")
+        with self.assertRaises(RootOmitError):
+            eng.render(tmpl, context={}, registry=default_registry())
 
     def test_foreach_list(self):
         eng = TemplateEngine()

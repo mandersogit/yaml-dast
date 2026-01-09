@@ -89,12 +89,30 @@ Use `load_template_text(...)` for YAML text.
 
 If you use render-time includes (`!include_rt`), prefer `TemplateEngine.render(...)` so the renderer has access to the engine instance.
 
-## Render options
+### Security-oriented convenience profiles
 
-Rendering behavior is controlled by `ydst.render.RenderOptions`.
+ydst provides convenience helpers for defensive defaults when ingesting template inputs that are not fully trusted:
 
 ```python
-from ydst.render import RenderOptions
+from ydst import load_template_text, safe_engine, safe_render
+
+eng = safe_engine(include_paths=["."])  # optional
+tmpl = load_template_text("temperature: !var temperature", engine=eng)
+
+# Locked down by default (no calls, no includes)
+out = safe_render(tmpl, {"temperature": 0.2}, engine=eng)
+```
+
+These helpers are intentionally conservative. If you need more capability, instantiate
+`TemplateEngine` and `RenderOptions` directly and be explicit about which features you
+enable.
+
+## Render options
+
+Rendering behavior is controlled by :class:`ydst.RenderOptions`.
+
+```python
+from ydst import RenderOptions
 
 options = RenderOptions(
     mode="trusted",         # "trusted" (default), "expr_safe", or "locked_down"
@@ -149,7 +167,7 @@ Note: even with `allow_function_calls_in_expr=True`, ydst only allows calling *w
 You can attach a trace callback to observe evaluation events for template nodes:
 
 ```python
-from ydst.render import RenderOptions
+from ydst import RenderOptions
 
 events = []
 

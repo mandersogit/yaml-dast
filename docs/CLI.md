@@ -1,6 +1,6 @@
 # CLI
 
-ydst includes a small CLI for rendering templates.
+ydst includes a small CLI for rendering templates and doing basic static analysis.
 
 Install (editable):
 
@@ -80,7 +80,7 @@ Hardening options:
 ## YAML loader
 
 - default: `yaml.SafeLoader`
-- `--full-loader` uses `yaml.FullLoader`
+- `--full-loader` uses `yaml.FullLoader` (trusted templates only; more permissive)
 
 ## Modes and strictness
 
@@ -124,9 +124,9 @@ ydst render template.yaml --context-file ctx.json --registry-tier safe --callabl
 
 Built-in tiers:
 
-- `--registry-tier none` (default)
+- `--registry-tier none` (disable)
 - `--registry-tier minimal`
-- `--registry-tier safe`
+- `--registry-tier safe` (default)
 - `--registry-tier extended`
 
 Custom registries:
@@ -136,6 +136,22 @@ ydst render template.yaml --context-file ctx.json --registry-module mypkg.reg --
 ```
 
 The module must define `REGISTRY` or `registry`.
+
+## Validate
+
+Parse and validate a template without rendering:
+
+```bash
+ydst validate template.yaml
+```
+
+## Dependencies
+
+Analyze static dependencies (vars, calls, includes, expressions):
+
+```bash
+ydst deps template.yaml
+```
 
 ## Debugging
 

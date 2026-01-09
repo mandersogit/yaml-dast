@@ -1,6 +1,31 @@
 # Changelog
 
 
+## 0.2.1 (2026-01-03)
+
+### Correctness
+
+- `!foreach` nodes now default presence-sensitive fields (`template`, `key`, `value`) to `UNSET` for better consistency with validation when templates are constructed programmatically.
+- Renderer now defensively errors if a programmatic `!foreach` is missing required fields (rather than rendering `UNSET` through to the output).
+- Include root-enforcement now uses `Path.relative_to(...)` for cross-platform correctness.
+
+### API
+
+- Exported `RenderOptions` and `TraceEvent` at the package top level (`from ydst import RenderOptions`).
+- Added `safe_engine(...)` and `safe_render(...)` convenience helpers for conservative defaults.
+
+### CLI
+
+- Default `--registry-tier` is now `safe` (use `--registry-tier none` to disable).
+- Improved `--full-loader` help text to better communicate risk.
+- Added `ydst validate` and `ydst deps` commands.
+
+### Maintenance
+
+- Removed an unused `warnings` import.
+- Reduced duplication in error classes.
+
+
 ## 0.2.0 (2026-01-02)
 
 ### Breaking changes (pre-1.0 cleanup)
