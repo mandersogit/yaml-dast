@@ -9,7 +9,7 @@ from ydst.render import RenderOptions
 class TestDefaultTag(unittest.TestCase):
     def test_default_fallback_for_missing_var_strict(self):
         eng = TemplateEngine()
-        tmpl = eng.load_template(
+        tmpl = eng.load_template_text(
             """
 x: !default
   value: !var {name: missing, required: true}
@@ -21,7 +21,7 @@ x: !default
 
     def test_default_fallback_for_missing_var_non_strict_none(self):
         eng = TemplateEngine()
-        tmpl = eng.load_template(
+        tmpl = eng.load_template_text(
             """
 x: !default
   value: !var {name: missing, required: false}
@@ -33,7 +33,7 @@ x: !default
 
     def test_default_treat_none_as_missing_toggle(self):
         eng = TemplateEngine()
-        tmpl = eng.load_template(
+        tmpl = eng.load_template_text(
             """
 x: !default
   value: !var {name: v, required: false}
@@ -49,7 +49,7 @@ x: !default
 class TestPolicyAndLoaderControls(unittest.TestCase):
     def test_expr_compile_wrap_exceptions_toggle(self):
         eng = TemplateEngine()
-        tmpl = eng.load_template('x: !expr "1 +"\n')
+        tmpl = eng.load_template_text('x: !expr "1 +"\n')
 
         # Default: wrapped as ExpressionError
         with self.assertRaises(ExpressionError):

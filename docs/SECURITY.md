@@ -19,7 +19,7 @@ ydst's `RenderOptions` includes both a coarse-grained `mode` and several explici
   - expressions may use attribute access and function calls (subject to the registry you provide)
   - `!call` and `!include_rt` are permitted (again, only if you provided a registry/resolver)
 
-- `mode="expr_safe"` (deprecated alias: `mode="safe"`)
+- `mode="expr_safe"`
   - restricts **only** `!expr` (no attribute access, no expression function calls)
   - does **not** automatically disable `!call`, `!pipe` registry calls, runtime includes, or load-time includes
 

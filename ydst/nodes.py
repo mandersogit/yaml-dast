@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Optional
+from dataclasses import dataclass, field, fields
+from typing import Any, Iterator, Optional
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class SourceMark:
     """Source location information for a YAML node.
 
@@ -16,16 +16,35 @@ class SourceMark:
     column: Optional[int] = None
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class TemplateNode:
-    """Base class for all template nodes."""
+    """Base class for all template nodes.
+
+    Template nodes are treated as immutable. The renderer does not mutate nodes at runtime.
+    """
 
     mark: Optional[SourceMark] = None
 
+    # Important: do not allow TemplateNode objects to become usable as dict keys.
+    # ydst intentionally forbids templated keys in mappings.
+    __hash__ = None
 
-@dataclass
+
+def iter_template_node_items(node: TemplateNode) -> Iterator[tuple[str, Any]]:
+    """Yield (field_name, value) for a TemplateNode.
+
+    We use dataclass fields instead of `__dict__` so nodes can be `slots=True`.
+    """
+
+    for f in fields(node):
+        yield f.name, getattr(node, f.name)
+
+
+@dataclass(frozen=True, slots=True)
 class Omit(TemplateNode):
     """A sentinel node that removes a key or list item from the rendered output."""
+
+    __hash__ = None
 
     def __bool__(self) -> bool:  # pragma: no cover
         # Treat OMIT as falsy so it behaves naturally in conditionals (e.g. !if, !foreach when).
@@ -47,7 +66,7 @@ OMIT = Omit()
 UNSET: Any = object()
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class Var(TemplateNode):
     """Variable substitution.
 
@@ -60,12 +79,14 @@ class Var(TemplateNode):
       - if the variable is missing and `default` is OMIT / !omit, the key/item is omitted
     """
 
+    __hash__ = None
+
     name: str = ""
     default: Any = field(default_factory=lambda: UNSET)
     required: bool = True
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class Default(TemplateNode):
     """Coalesce / fallback.
 
@@ -87,13 +108,15 @@ class Default(TemplateNode):
     This is designed for ergonomic composition; it is not an error-handling sandbox.
     """
 
+    __hash__ = None
+
     value: Any = None
     default: Any = field(default_factory=lambda: UNSET)
     treat_none_as_missing: bool = True
     treat_omit_as_missing: bool = True
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class If(TemplateNode):
     """Conditional selection.
 
@@ -103,12 +126,14 @@ class If(TemplateNode):
     If `else` is omitted, it defaults to !omit.
     """
 
+    __hash__ = None
+
     test: Any = None
     then: Any = None
     else_: Any = field(default_factory=lambda: OMIT)
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class ForEach(TemplateNode):
     """Iteration / collection generation.
 
@@ -121,6 +146,8 @@ class ForEach(TemplateNode):
     Set form:
       !foreach {var: x, in: <template>, into: set, template: <template>}
     """
+
+    __hash__ = None
 
     var: str = "item"
     in_: Any = None
@@ -138,7 +165,7 @@ class ForEach(TemplateNode):
     value: Any = None
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class Expr(TemplateNode):
     """Expression evaluation.
 
@@ -153,12 +180,14 @@ class Expr(TemplateNode):
       - if `default` is OMIT / !omit, the key/item is omitted
     """
 
+    __hash__ = None
+
     expr: str = ""
     strict: bool = True
     default: Any = field(default_factory=lambda: UNSET)
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class Call(TemplateNode):
     """Call a named function from a registry.
 
@@ -169,12 +198,14 @@ class Call(TemplateNode):
     `fn` may itself be templated; it is rendered to a string at runtime.
     """
 
+    __hash__ = None
+
     fn: Any = ""
     args: list[Any] = field(default_factory=list)
     kwargs: dict[str, Any] = field(default_factory=dict)
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class Pipe(TemplateNode):
     """Pipeline composition.
 
@@ -182,23 +213,30 @@ class Pipe(TemplateNode):
       !pipe [<stage1>, <stage2>, ...]
 
     Semantics:
-      - first stage is rendered to a value
+      - stage 0 is rendered to a value
       - subsequent stages are applied to the current value
-        * if stage is a Call node, it is invoked with the current value as the first arg
-        * if stage renders to a string and the registry contains a callable with that name,
-          call it with the current value
-        * otherwise the stage result becomes the new value (a pass-through value)
+        * if the stage is a `!call` node, it is invoked with the current value as the first arg
+        * if the stage renders to a string and `allow_pipe_registry_calls=True`, we attempt to
+          resolve a registry function with that name and call it
+        * if the stage renders to a callable and `allow_callable_pipe_stages=True`, we call it
+          with the current value
+        * otherwise the stage result becomes the new value
 
-    Note
-    ----
-    By default, stages that render to arbitrary Python callables are *not* invoked.
-    Enable this with RenderOptions(allow_callable_pipe_stages=True) if you need it.
+    Notes
+    -----
+    - By default, unknown string stages raise an error (`RenderOptions.strict_pipe_stages=True`).
+      If you want the older "unknown strings become literal" behavior, set
+      `RenderOptions.strict_pipe_stages=False`.
+    - By default, stages that render to arbitrary Python callables are *not* invoked.
+      Enable this with `RenderOptions(allow_callable_pipe_stages=True)` if you need it.
     """
+
+    __hash__ = None
 
     steps: list[Any] = field(default_factory=list)
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class IncludeRuntime(TemplateNode):
     """Render-time include.
 
@@ -208,6 +246,8 @@ class IncludeRuntime(TemplateNode):
 
     The `target` is rendered at runtime to a string and resolved via an IncludeResolver.
     """
+
+    __hash__ = None
 
     target: Any = ""
     required: bool = True

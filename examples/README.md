@@ -50,7 +50,7 @@ Context: `01-basic.json`
 Run:
 
 ```bash
-ydst render 01-basic.yaml --context-file 01-basic.json --default-registry
+ydst render 01-basic.yaml --context-file 01-basic.json --registry-tier safe
 ```
 
 ---
@@ -76,13 +76,13 @@ params:
 Run (creative):
 
 ```bash
-ydst render 02-if-omit.yaml --context-file 02-if-omit-creative.json --default-registry
+ydst render 02-if-omit.yaml --context-file 02-if-omit-creative.json --registry-tier safe
 ```
 
 Run (normal):
 
 ```bash
-ydst render 02-if-omit.yaml --context-file 02-if-omit-normal.json --default-registry
+ydst render 02-if-omit.yaml --context-file 02-if-omit-normal.json --registry-tier safe
 ```
 
 ---
@@ -107,7 +107,7 @@ Context: `03-foreach-dict.json`
 Run:
 
 ```bash
-ydst render 03-foreach-dict.yaml --context-file 03-foreach-dict.json --default-registry
+ydst render 03-foreach-dict.yaml --context-file 03-foreach-dict.json --registry-tier safe
 ```
 
 ---
@@ -135,7 +135,7 @@ payload_json: !pipe
 Run:
 
 ```bash
-ydst render 04-pipe-call.yaml --context-file 04-pipe-call.json --default-registry
+ydst render 04-pipe-call.yaml --context-file 04-pipe-call.json --registry-tier safe
 ```
 
 ---
@@ -156,7 +156,7 @@ service:
 Run:
 
 ```bash
-ydst render 05-include-load.yaml --context-file 05-include-load.json --default-registry --include-path .
+ydst render 05-include-load.yaml --context-file 05-include-load.json --registry-tier safe --include-path .
 ```
 
 ---
@@ -176,13 +176,13 @@ settings: !include_rt
 Run (dev):
 
 ```bash
-ydst render 06-include-runtime.yaml --context-file 06-include-runtime-dev.json --default-registry --include-path .
+ydst render 06-include-runtime.yaml --context-file 06-include-runtime-dev.json --registry-tier safe --include-path .
 ```
 
 Run (prod):
 
 ```bash
-ydst render 06-include-runtime.yaml --context-file 06-include-runtime-prod.json --default-registry --include-path .
+ydst render 06-include-runtime.yaml --context-file 06-include-runtime-prod.json --registry-tier safe --include-path .
 ```
 
 ---
@@ -221,5 +221,5 @@ Context: `08-default.json`
 Run:
 
 ```bash
-ydst render 08-default.yaml --context-file 08-default.json --default-registry
+ydst render 08-default.yaml --context-file 08-default.json --registry-tier safe
 ```

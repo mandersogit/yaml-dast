@@ -1,6 +1,35 @@
 # Changelog
 
 
+## 0.2.0 (2026-01-02)
+
+### Breaking changes (pre-1.0 cleanup)
+
+- **Loading semantics**: `TemplateEngine.load_template(...)` and `ydst.load_template(...)` now treat a `str` input as a **filesystem path**.
+  - Use `load_template_text(...)` / `TemplateEngine.load_template_text(...)` for YAML text.
+  - `load_template_file(...)` remains explicit and unchanged.
+- **API cleanup**: removed the deprecated `loader=` parameter from `ydst.load_template(...)`; use `engine=`.
+- **Modes**: removed `mode="safe"` and `mode="lockdown"` aliases.
+  - Use `mode="expr_safe"` or `mode="locked_down"`.
+- **Tag set cleanup**: removed tag aliases.
+  - `!variable` → use `!var`.
+  - `!include_runtime` / `!include_render` → use `!include_rt`.
+- **Include syntax**: `!include` is now **load-time only** (no `timing:` field).
+  - Render-time include is always `!include_rt`.
+- **Registry tiers**: `default_registry()` is now the **safe-by-default** tier.
+  - Use `extended_registry()` for environment access (`env`) and other extended helpers.
+- **`!pipe` defaults**: unknown string stages now **error by default** (`RenderOptions.strict_pipe_stages=True`).
+- **Root `!omit`**: rendering a root-level `!omit` now **always raises** `RootOmitError` (regardless of strictness).
+- **Template nodes**: core node dataclasses are now `slots=True` + `frozen=True` (treated as immutable).
+
+### CLI changes
+
+- Removed `--default-registry`.
+- `--registry-tier` values are now: `none`, `minimal`, `safe`, `extended`.
+- `--mode` choices are now: `trusted`, `expr_safe`, `locked_down`.
+
+
+
 ## 0.1.6 (2026-01-02)
 
 ### Changes

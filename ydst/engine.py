@@ -67,11 +67,24 @@ class TemplateEngine:
     def load_template(self, source: SourceInput, *, source_name: Optional[str] = None) -> Any:
         """Load YAML and return a template object graph (plain values + TemplateNodes).
 
-        `source` is treated as YAML content if it's a string.
-        For filesystem paths, pass a `pathlib.Path` (or call `load_template_file` / `load_template_path`).
-        For clarity, you can use `load_template_text` when you are passing YAML content as a string.
+        Semantics
+        ---------
+        - If `source` is a `str` or `pathlib.Path`, it is treated as a **filesystem path**.
+        - If `source` is bytes/bytearray, it is treated as UTF-8 YAML text.
+        - If `source` is a file-like object, YAML is read from the stream.
+
+        If you want to parse YAML from a Python string, use :meth:`load_template_text`.
         """
+
         include_stack: list[str] = []
+
+        if isinstance(source, str):
+            p = Path(source)
+            return self._load_template_internal(p, source_name=source_name or str(p), include_stack=include_stack)
+
+        if isinstance(source, Path):
+            return self._load_template_internal(source, source_name=source_name or str(source), include_stack=include_stack)
+
         return self._load_template_internal(source, source_name=source_name, include_stack=include_stack)
 
     def load_template_file(self, path: Union[str, Path]) -> Any:
@@ -82,7 +95,7 @@ class TemplateEngine:
     def load_template_text(self, text: str, *, source_name: Optional[str] = None) -> Any:
         """Load a YAML template from a text string.
 
-        This is equivalent to `load_template(text)` but is explicit about the intent.
+        This is the explicit way to parse YAML from a Python `str`.
         """
         include_stack: list[str] = []
         return self._load_template_internal(text, source_name=source_name, include_stack=include_stack)

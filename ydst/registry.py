@@ -179,36 +179,18 @@ def json_dumps(value: Any, *, sort_keys: bool = True) -> str:
 
 
 def default_registry() -> DictFunctionRegistry:
-    """An optional built-in registry for convenience.
+    """Default built-in registry (safe-by-default tier).
 
     This is *not* enabled automatically; callers must opt in.
 
-    If you want fewer capabilities by default, consider `safe_registry()` or `minimal_registry()`.
+    In ydst 0.2.0+, `default_registry()` is intentionally conservative and is
+    equivalent to :func:`safe_registry`.
+
+    If you need environment access (`env`) or other extended helpers, use
+    :func:`extended_registry`.
     """
 
-    funcs: Dict[str, Callable[..., Any]] = {
-        # basic helpers
-        "get_in": get_in,
-        "coalesce": coalesce,
-        "slugify": slugify,
-        "env": env,
-        "to_int": to_int,
-        "to_float": to_float,
-        "json_dumps": json_dumps,
-        # common safe builtins (explicitly listed)
-        "len": len,
-        "min": min,
-        "max": max,
-        "sum": sum,
-        "sorted": sorted,
-        "str": str,
-        "int": int,
-        "float": float,
-        "bool": bool,
-        "round": round,
-        "abs": abs,
-    }
-    return DictFunctionRegistry(funcs)
+    return safe_registry()
 
 
 # ---------------------------------------------------------------------------
@@ -245,6 +227,7 @@ def safe_registry() -> DictFunctionRegistry:
         "slugify": slugify,
         "to_int": to_int,
         "to_float": to_float,
+        "json_dumps": json_dumps,
         # common safe builtins (explicitly listed)
         "len": len,
         "min": min,
@@ -262,10 +245,15 @@ def safe_registry() -> DictFunctionRegistry:
 
 
 def extended_registry() -> DictFunctionRegistry:
-    """An extended registry.
+    """An extended built-in registry.
 
-    Currently this is an alias for `default_registry()` and is provided for clarity
-    when choosing a registry tier.
+    This includes the :func:`safe_registry` plus helpers that may expose
+    environmental data.
     """
 
-    return default_registry()
+    base = safe_registry().functions
+    funcs: Dict[str, Callable[..., Any]] = dict(base)
+    funcs.update({
+        "env": env,
+    })
+    return DictFunctionRegistry(funcs)

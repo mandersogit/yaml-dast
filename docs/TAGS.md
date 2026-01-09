@@ -4,7 +4,7 @@ This document describes the templating tags supported by ydst.
 
 All tags create **template nodes** during load and are evaluated during render.
 
-## `!var` / `!variable`
+## `!var`
 
 Inject a value from the runtime context (or loop scope).
 
@@ -25,11 +25,14 @@ temperature: !var
 
 Semantics:
 
-- Lookup order: loop scope → global context
+- Lookup order: loop scope → global context.
 - If missing:
-  - strict + required → error
-  - otherwise → render `default` if provided, else `null`
+  - strict + required → error (`MissingVariableError`).
+  - otherwise → render `default` if provided, else `null`.
 
+Notes:
+
+- `name` must be a non-empty string.
 
 ## `!default`
 
@@ -58,14 +61,13 @@ timeout_seconds: !default
 Semantics:
 
 - Render `value`.
-- If `value` raises a `MissingVariableError` or an `IncludeError`, `default` is rendered instead.
+- If `value` raises a `MissingVariableError` or an `IncludeError`, render `default` instead.
 - If `treat_none_as_missing` is true (default), a rendered `null` triggers the fallback.
 - If `treat_omit_as_missing` is true (default), a rendered `!omit` triggers the fallback.
 
 Notes:
 
 - `!default` is intended for ergonomic composition; it does not catch arbitrary exceptions.
-- For strict control over omission, set `treat_omit_as_missing: false`.
 
 ## `!if`
 
@@ -89,7 +91,7 @@ Produces an omission sentinel.
 
 - In mappings, a value that renders to `!omit` removes the key.
 - In sequences, an element that renders to `!omit` is skipped.
-- At the root, `!omit` is an error in strict mode.
+- At the root, `!omit` is **always an error**.
 
 Example:
 
@@ -150,13 +152,13 @@ Duplicate keys (for `into: dict`) are governed by `RenderOptions.dict_key_confli
 
 Evaluate a restricted Python expression (AST-based).
 
-Scalar form:
+### Scalar form
 
 ```yaml
 max_tokens: !expr "base_tokens + bonus"
 ```
 
-Mapping form:
+### Mapping form
 
 ```yaml
 max_tokens: !expr
@@ -169,7 +171,7 @@ Notes:
 
 - In strict mode, missing names raise.
 - If `strict: false` (or global non-strict), missing names use `default` if present.
-- Attribute access is enabled by default in trusted mode and disabled in safe mode.
+- Attribute access and function calls inside expressions are enabled by default in `trusted` mode and disabled in `expr_safe`.
 
 See `EXPRESSIONS.md` for details on allowed constructs.
 
@@ -177,14 +179,13 @@ See `EXPRESSIONS.md` for details on allowed constructs.
 
 Call a named function from a registry.
 
-Scalar form (rare; only useful for zero-arg functions):
+### Scalar form (rare; only useful for zero-arg functions)
 
 ```yaml
-# e.g., if your registry provides a zero-arg function
 value: !call some_zero_arg_fn
 ```
 
-Mapping form (typical):
+### Mapping form (typical)
 
 ```yaml
 user_id: !call
@@ -194,8 +195,14 @@ user_id: !call
     default: 0
 ```
 
-- The registry is provided by the caller (or `--default-registry` in CLI).
+Semantics:
+
+- The registry is provided by the caller (e.g. `engine.render(..., registry=...)`).
 - Arguments are rendered before calling.
+
+CLI note:
+
+- If your template uses `!call`, provide a registry via `ydst render --registry-tier ...` or `--registry-module ...`.
 
 ## `!pipe`
 
@@ -211,43 +218,53 @@ Pipeline stages:
 
 - First stage is rendered to an initial value.
 - A `!call` stage receives the prior value as its first positional argument.
-- A string stage (e.g., `slugify`) calls the named function **if present** in the registry.
-  If the name is not present, the string is treated as a literal stage result.
-  To make unknown stage names an error (recommended for catching typos), enable `RenderOptions(strict_pipe_stages=True)` (or `ydst render --strict-pipe-stages`).
-- A callable stage is only invoked when `RenderOptions(allow_callable_pipe_stages=True)`.
+- A **string stage** (e.g. `slugify`) is treated as a registry function name when `RenderOptions.allow_pipe_registry_calls=True`.
+  - By default, unknown stage names are an error (`RenderOptions.strict_pipe_stages=True`).
+  - If `strict_pipe_stages=False`, unknown string stages are treated as literal values.
+- A **callable stage** is only invoked when `RenderOptions.allow_callable_pipe_stages=True`.
   By default, callable stages raise an error (use `!call` or a registry string stage).
+
+CLI note:
+
+- Use `ydst render --pipe-unknown literal` to allow unknown string stages to be treated as literal values.
 
 ## `!include` (load-time include)
 
-Scalar form:
+Load-time includes are resolved and parsed during `engine.load_template_*`.
+
+### Scalar form
 
 ```yaml
 common: !include includes/common.yaml
 ```
 
-Mapping form (explicit timing):
+### Mapping form
 
 ```yaml
 common: !include
   target: includes/common.yaml
-  timing: load       # load|render|runtime|rt
   required: true
   default: !omit
 ```
 
-- Load-time includes are resolved and parsed immediately during `engine.load_template(...)`.
-- When `required: false` and no `default` is provided, missing includes evaluate to `null` (`None`),
-  not omission. Use `default: !omit` to omit keys/items.
+Notes:
 
-## `!include_rt` / `!include_runtime` / `!include_render` (render-time include)
+- `!include` is **load-time only**.
+- `target` must be a literal (non-empty) string.
+- When `required: false` and no `default` is provided, missing includes evaluate to `null` (`None`), not omission.
+  Use `default: !omit` to omit keys/items.
 
-Scalar form:
+## `!include_rt` (render-time include)
+
+Render-time includes are resolved during rendering.
+
+### Scalar form
 
 ```yaml
 settings: !include_rt profiles/dev.yaml
 ```
 
-Mapping form:
+### Mapping form
 
 ```yaml
 settings: !include_rt
@@ -256,6 +273,7 @@ settings: !include_rt
   default: {}
 ```
 
-- Render-time includes are resolved during rendering.
+Notes:
+
 - The include target can be templated (because `target` is rendered first).
-- Render-time includes require a `TemplateEngine` instance during rendering.
+- To avoid repeated file I/O, set `RenderOptions(cache_runtime_includes=True)`.

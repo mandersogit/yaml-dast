@@ -18,7 +18,7 @@ from ydst.registry import chain_registries
 class TestYdstBasic(unittest.TestCase):
     def test_var_and_if_and_omit(self):
         eng = TemplateEngine()
-        tmpl = eng.load_template(
+        tmpl = eng.load_template_text(
             """
 a: 1
 b: !var x
@@ -36,7 +36,7 @@ c: !if
 
     def test_foreach_list(self):
         eng = TemplateEngine()
-        tmpl = eng.load_template(
+        tmpl = eng.load_template_text(
             """
 items: !foreach
   var: t
@@ -49,7 +49,7 @@ items: !foreach
 
     def test_foreach_dict(self):
         eng = TemplateEngine()
-        tmpl = eng.load_template(
+        tmpl = eng.load_template_text(
             """
 m: !foreach
   var: t
@@ -65,7 +65,7 @@ m: !foreach
     def test_foreach_allows_explicit_null_template_key_value(self):
         eng = TemplateEngine()
 
-        tmpl_list = eng.load_template(
+        tmpl_list = eng.load_template_text(
             """
 x: !foreach
   in: [1, 2, 3]
@@ -74,7 +74,7 @@ x: !foreach
         )
         self.assertEqual(eng.render(tmpl_list), {"x": [None, None, None]})
 
-        tmpl_set = eng.load_template(
+        tmpl_set = eng.load_template_text(
             """
 x: !foreach
   in: [1, 2]
@@ -84,7 +84,7 @@ x: !foreach
         )
         self.assertEqual(eng.render(tmpl_set), {"x": {None}})
 
-        tmpl_dict = eng.load_template(
+        tmpl_dict = eng.load_template_text(
             """
 x: !foreach
   in: [1]
@@ -97,7 +97,7 @@ x: !foreach
 
     def test_call_and_pipe(self):
         eng = TemplateEngine()
-        tmpl = eng.load_template(
+        tmpl = eng.load_template_text(
             """
 slug: !pipe
   - !var title
@@ -137,9 +137,9 @@ slug: !pipe
 
     def test_dict_key_conflict_policy(self):
         eng = TemplateEngine()
-        tmpl = eng.load_template("""m: {a: 1, a: 2}\n""")  # YAML parser will likely keep last anyway
+        tmpl = eng.load_template_text("""m: {a: 1, a: 2}\n""")  # YAML parser will likely keep last anyway
         # For deterministic test, force conflict via foreach dict:
-        tmpl = eng.load_template(
+        tmpl = eng.load_template_text(
             """
 m: !foreach
   var: t
@@ -162,7 +162,7 @@ m: !foreach
 
     def test_expr_calls_with_chained_registry(self):
         eng = TemplateEngine()
-        tmpl = eng.load_template("n: !expr \"len(xs)\"\n")
+        tmpl = eng.load_template_text("n: !expr \"len(xs)\"\n")
 
         extra = default_registry()
         extra.functions = {"noop": lambda x: x}
@@ -180,20 +180,20 @@ m: !foreach
                 return self._funcs.get(name)
 
         eng = TemplateEngine()
-        tmpl = eng.load_template("n: !expr \"len(xs)\"\n")
+        tmpl = eng.load_template_text("n: !expr \"len(xs)\"\n")
         reg = _GetOnly({"len": len})
         out = eng.render(tmpl, context={"xs": [1, 2, 3]}, registry=reg)
         self.assertEqual(out["n"], 3)
 
     def test_expr_dict_unpacking_rejected(self):
         eng = TemplateEngine()
-        tmpl = eng.load_template("x: !expr \"{**d}\"\n")
+        tmpl = eng.load_template_text("x: !expr \"{**d}\"\n")
         with self.assertRaises(ExpressionError):
             eng.render(tmpl, context={"d": {"a": 1}}, registry=default_registry())
 
     def test_expr_private_attributes_rejected(self):
         eng = TemplateEngine()
-        tmpl = eng.load_template("x: !expr \"obj.__class__.__name__\"\n")
+        tmpl = eng.load_template_text("x: !expr \"obj.__class__.__name__\"\n")
         with self.assertRaises(ExpressionError):
             eng.render(tmpl, context={"obj": object()}, registry=default_registry())
 
@@ -208,7 +208,7 @@ m: !foreach
 
     def test_expr_subscripts_policy_toggle(self):
         eng = TemplateEngine()
-        tmpl = eng.load_template("x: !expr \"d['a']\"\n")
+        tmpl = eng.load_template_text("x: !expr \"d['a']\"\n")
 
         with self.assertRaises(ExpressionError):
             eng.render(
@@ -223,7 +223,7 @@ m: !foreach
 
     def test_safe_mode_disables_expr_calls(self):
         eng = TemplateEngine()
-        tmpl = eng.load_template("n: !expr \"len(xs)\"\n")
+        tmpl = eng.load_template_text("n: !expr \"len(xs)\"\n")
         with self.assertRaises(ExpressionError):
             eng.render(
                 tmpl,
@@ -234,7 +234,7 @@ m: !foreach
 
     def test_max_depth_applies_to_containers(self):
         eng = TemplateEngine()
-        tmpl = eng.load_template("""
+        tmpl = eng.load_template_text("""
 a:
   b:
     c:
@@ -246,7 +246,7 @@ a:
     def test_default_omit_for_var_expr_include_rt(self):
         eng = TemplateEngine()
 
-        tmpl_var = eng.load_template("""
+        tmpl_var = eng.load_template_text("""
 a: !var
   name: missing
   required: false
@@ -256,7 +256,7 @@ b: 1
         out_var = eng.render(tmpl_var, registry=default_registry())
         self.assertEqual(out_var, {"b": 1})
 
-        tmpl_expr = eng.load_template("""
+        tmpl_expr = eng.load_template_text("""
 a: !expr
   expr: missing_name
   strict: false
@@ -269,7 +269,7 @@ b: 1
         with tempfile.TemporaryDirectory() as td:
             td = Path(td)
             eng2 = TemplateEngine(include_resolver=FileIncludeResolver(search_paths=[td]))
-            tmpl_inc = eng2.load_template("""
+            tmpl_inc = eng2.load_template_text("""
 a: !include_rt
   target: missing.yaml
   required: false
@@ -296,25 +296,31 @@ b: 1
             out_rt = eng.render(tmpl_rt)
             self.assertEqual(out_rt, {"x": None})
 
-            tmpl_rt = eng.load_template("x: !include_rt empty.yaml\n")
+            tmpl_rt = eng.load_template_text("x: !include_rt empty.yaml\n")
             out_rt = eng.render(tmpl_rt)
             self.assertEqual(out_rt, {"x": None})
 
 
-    def test_pipe_unknown_string_stage_is_literal(self) -> None:
+    def test_pipe_unknown_string_stage_default_errors_but_can_be_literal(self) -> None:
         eng = TemplateEngine()
-        tmpl = eng.load_template(
+        tmpl = eng.load_template_text(
             """x: !pipe
   - 1
   - not_a_function
 """
         )
-        out = eng.render(tmpl, registry=default_registry())
+
+        # Default: strict pipe stages => unknown string stage is an error.
+        with self.assertRaises(RenderError):
+            eng.render(tmpl, registry=default_registry())
+
+        # Opt-out: allow unknown string stages to be treated as literal values.
+        out = eng.render(tmpl, registry=default_registry(), options=RenderOptions(strict_pipe_stages=False))
         self.assertEqual(out, {"x": "not_a_function"})
 
     def test_pipe_callable_stage_requires_opt_in(self) -> None:
         eng = TemplateEngine()
-        tmpl = eng.load_template(
+        tmpl = eng.load_template_text(
             """x: !pipe
   - 1
   - !var f
@@ -331,7 +337,7 @@ b: 1
 
     def test_load_time_include_required_false_defaults_to_none(self) -> None:
         eng = TemplateEngine()  # no include_resolver
-        tmpl = eng.load_template(
+        tmpl = eng.load_template_text(
             """x: !include
   target: missing.yaml
   required: false
@@ -344,7 +350,7 @@ b: 1
     def test_yaml_parse_error_preserves_mark(self) -> None:
         eng = TemplateEngine()
         with self.assertRaises(TemplateLoadError) as cm:
-            eng.load_template("a: [1, 2\n")  # missing closing bracket
+            eng.load_template_text("a: [1, 2\n")  # missing closing bracket
 
         e = cm.exception
         self.assertIsNotNone(e.ctx)
@@ -359,7 +365,7 @@ b: 1
 
     def test_omit_is_falsy_in_if(self) -> None:
         eng = TemplateEngine()
-        tmpl = eng.load_template("""
+        tmpl = eng.load_template_text("""
 !if
   test: !omit
   then: "YES"
@@ -370,7 +376,7 @@ b: 1
 
     def test_omit_is_falsy_in_foreach_when(self) -> None:
         eng = TemplateEngine()
-        tmpl = eng.load_template("""
+        tmpl = eng.load_template_text("""
 !foreach
   in: [1, 2, 3]
   template: {v: !var item}
@@ -382,15 +388,15 @@ b: 1
     def test_loader_validates_boolean_fields(self) -> None:
         eng = TemplateEngine()
         with self.assertRaises(TemplateLoadError):
-            eng.load_template('!var {name: x, required: "false"}')
+            eng.load_template_text('!var {name: x, required: "false"}')
 
         with self.assertRaises(TemplateLoadError):
-            eng.load_template('!include {timing: load, target: 123}')
+            eng.load_template_text('!include {timing: load, target: 123}')
 
     def test_foreach_var_must_be_non_empty_string(self) -> None:
         eng = TemplateEngine()
         with self.assertRaises(TemplateLoadError):
-            eng.load_template('!foreach {in: [1], var: "", template: {x: 1}}')
+            eng.load_template_text('!foreach {in: [1], var: "", template: {x: 1}}')
 
     def test_load_time_include_cycle_is_template_load_error(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -406,7 +412,7 @@ b: 1
 
     def test_pipe_unknown_stage_strict_errors(self) -> None:
         eng = TemplateEngine()
-        tmpl = eng.load_template('!pipe [a, unknown]')
+        tmpl = eng.load_template_text('!pipe [1, unknown]')
 
         with self.assertRaises(RenderError):
             eng.render(tmpl, registry=default_registry(), options=RenderOptions(strict_pipe_stages=True))

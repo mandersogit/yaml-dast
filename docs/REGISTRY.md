@@ -18,26 +18,37 @@ Expression calls resolve functions via `registry.get(name)` and therefore work w
 
 ydst provides several optional, built-in registries. None are enabled by default; you must opt in.
 
-- `minimal_registry()` — pure data helpers only (no environment access, no builtins)
-- `safe_registry()` — minimal helpers plus a small set of basic, deterministic builtins
-- `default_registry()` — convenience registry (includes `env()` and additional helpers)
-- `extended_registry()` — currently an alias for `default_registry()`; provided for clarity when you want to express tier intent
+- `minimal_registry()` — pure data helpers only (no environment access, no Python builtins)
+- `safe_registry()` — `minimal_registry()` plus a small set of deterministic builtins
+- `extended_registry()` — `safe_registry()` plus additional convenience functions that may be undesirable in locked-down environments (currently: `env()`)
+
+`default_registry()` is an alias for `safe_registry()` in v0.2.0. The intent is: if you are “just getting started” and want a sane default, use `default_registry()`; if you want to signal a more security-conscious stance, use `safe_registry()` explicitly.
 
 In security-sensitive scenarios, prefer `minimal_registry()` or `safe_registry()` and keep `RenderOptions.allow_function_calls_in_expr=False`.
 
-## `default_registry()`
+## Built-in function set
 
-ydst provides an optional `default_registry()` for convenience. It is **not** enabled automatically; callers must opt in (or use `--default-registry` in CLI).
+The exact set may evolve in early versions, but currently:
 
-Included functions (subject to change in early versions):
+### Minimal
 
 - `get_in(obj, path, default=None)` — nested dict/list access (supports dot-path strings with escaping)
 - `coalesce(*values, default=None)` — first non-`None`/non-`!omit`
 - `slugify(value, max_len=None)` — simple slug function
-- `env(name, default=None)` — environment variable lookup
 - `to_int(value, default=None)` / `to_float(value, default=None)`
 - `json_dumps(value, sort_keys=True)` — JSON serialize
-- selected safe builtins: `len`, `min`, `max`, `sum`, `sorted`, `str`, `int`, `float`, `bool`, `round`, `abs`
+
+### Safe
+
+Safe adds a small set of basic builtins:
+
+- `len`, `min`, `max`, `sum`, `sorted`, `str`, `int`, `float`, `bool`, `round`, `abs`
+
+### Extended
+
+Extended adds:
+
+- `env(name, default=None)` — environment variable lookup
 
 ## Providing a custom registry
 
@@ -47,7 +58,7 @@ The simplest approach is a dict wrapped in `DictFunctionRegistry`:
 from ydst import DictFunctionRegistry
 
 REGISTRY = DictFunctionRegistry({
-    "my_fn": lambda x: ...,
+    "my_fn": lambda x: x,
 })
 ```
 
@@ -56,3 +67,9 @@ Or define your own object implementing `.get(name)`.
 ## CLI registry modules
 
 The CLI accepts `--registry-module mypkg.registry_module`, which must provide `REGISTRY` or `registry` at module scope.
+
+Example:
+
+```bash
+ydst render template.yaml --context-file ctx.json --registry-tier safe --registry-module mypkg.registry_module
+```

@@ -56,7 +56,7 @@ class RenderOptions:
 
     Notes
     -----
-    - `strict` controls missing variables and root-omit behavior.
+    - `strict` controls missing variables and other "required" behaviors.
     - `dict_key_conflict='auto'` means:
         strict=True  -> error
         strict=False -> last-wins
@@ -67,7 +67,7 @@ class RenderOptions:
     `mode` is a convenience preset; it simply sets other flags via `normalized()`.
 
     - `trusted`: no automatic restrictions.
-    - `safe` / `expr_safe`: disables attribute access and function calls inside `!expr`.
+    - `expr_safe`: disables attribute access and function calls inside `!expr`.
     - `locked_down`: a stricter preset intended for untrusted-ish templates. It disables:
         * `!expr` attribute access and calls
         * `!call`
@@ -80,7 +80,7 @@ class RenderOptions:
     arbitrary templates safe against malicious inputs.
     """
 
-    mode: str = "trusted"  # trusted|safe|expr_safe|locked_down
+    mode: str = "trusted"  # trusted|expr_safe|locked_down
     strict: bool = True
 
     # -----------------
@@ -118,7 +118,7 @@ class RenderOptions:
 
     # If True, unknown string stages (that are not registry functions) raise an error
     # instead of being treated as literal strings.
-    strict_pipe_stages: bool = False
+    strict_pipe_stages: bool = True
 
     # -----------------
     # !foreach policy
@@ -189,28 +189,9 @@ class RenderOptions:
         """Normalize options based on mode."""
         o = RenderOptions(**self.__dict__)
 
-        raw_mode = (o.mode or "trusted").replace("-", "_").lower()
-        # Historically we accepted mode="safe" and mode="lockdown" as aliases.
-        # These names are easy to over-interpret; keep them as deprecated aliases for
-        # the more explicit canonical modes.
-        if raw_mode == "safe":
-            warnings.warn(
-                'RenderOptions.mode="safe" is deprecated; use mode="expr_safe" instead.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            mode = "expr_safe"
-        elif raw_mode == "lockdown":
-            warnings.warn(
-                'RenderOptions.mode="lockdown" is deprecated; use mode="locked_down" instead.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            mode = "locked_down"
-        else:
-            mode = raw_mode
+        mode = (o.mode or "trusted").replace("-", "_").lower()
 
-        if mode in ("safe", "expr_safe"):
+        if mode == "expr_safe":
             # "Safe" in ydst means: safe-ish *expressions*.
             o.allow_attribute_access_in_expr = False
             o.allow_function_calls_in_expr = False
@@ -220,7 +201,7 @@ class RenderOptions:
             # Also disallow implicit callable stages in !pipe, since this bypasses the registry.
             o.allow_callable_pipe_stages = False
 
-        if mode in ("locked_down", "lockdown"):
+        if mode == "locked_down":
             # Start from expr-safe.
             o.allow_attribute_access_in_expr = False
             o.allow_function_calls_in_expr = False
@@ -317,13 +298,12 @@ def render_template(
 
     result = _render_any(template, ctx)
 
+    # Root-level !omit has no sensible container semantics. Reject it explicitly.
     if result is OMIT or isinstance(result, Omit):
-        if ctx.options.strict:
-            raise RootOmitError(
-                "Template rendered to !omit at root",
-                ctx=ErrorContext(path=tuple(ctx.path), node_type="Omit"),
-            )
-        return result
+        raise RootOmitError(
+            "Template rendered to !omit at root",
+            ctx=ErrorContext(path=tuple(ctx.path), node_type="Omit"),
+        )
     return result
 
 
@@ -880,11 +860,17 @@ def _render_pipe(node: Any, ctx: RenderContext) -> Any:
 
             rendered_stage = _render_any(stage, ctx)
 
-            if (
-                isinstance(rendered_stage, str)
-                and ctx.registry is not None
-                and ctx.options.allow_pipe_registry_calls
-            ):
+            if isinstance(rendered_stage, str) and ctx.options.allow_pipe_registry_calls:
+                # Treat strings as registry function names.
+                if ctx.registry is None:
+                    if ctx.options.strict_pipe_stages:
+                        raise RenderError(
+                            f"No registry provided; cannot resolve pipe stage function: {rendered_stage!r}",
+                            ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="Pipe"),
+                        )
+                    value = rendered_stage
+                    continue
+
                 fn = ctx.registry.get(rendered_stage)
                 if fn is not None and callable(fn):
                     try:
@@ -1033,7 +1019,7 @@ def _render_include_runtime(node: IncludeRuntime, ctx: RenderContext) -> Any:
                 included_tmpl = cache.pop(res.key)
                 cache[res.key] = included_tmpl
             else:
-                included_tmpl = ctx.engine.load_template(res.content, source_name=res.source_name)
+                included_tmpl = ctx.engine.load_template_text(res.content, source_name=res.source_name)
                 cache[res.key] = included_tmpl
 
                 maxn = ctx.options.runtime_include_cache_max
@@ -1043,7 +1029,7 @@ def _render_include_runtime(node: IncludeRuntime, ctx: RenderContext) -> Any:
                         oldest = next(iter(cache))
                         cache.pop(oldest, None)
         else:
-            included_tmpl = ctx.engine.load_template(res.content, source_name=res.source_name)
+            included_tmpl = ctx.engine.load_template_text(res.content, source_name=res.source_name)
 
         return _render_any(included_tmpl, ctx)
     finally:

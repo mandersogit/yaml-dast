@@ -4,7 +4,16 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Optional, Set
 
-from .nodes import Call, Expr, IncludeRuntime, Pipe, TemplateNode, Var, UNSET
+from .nodes import (
+    Call,
+    Expr,
+    IncludeRuntime,
+    Pipe,
+    TemplateNode,
+    Var,
+    UNSET,
+    iter_template_node_items,
+)
 from .registry import FunctionRegistry
 from .validate import collect_variables
 
@@ -21,7 +30,7 @@ def collect_expressions(template: Any) -> Set[str]:
                 walk(x.default)
             return
         if isinstance(x, TemplateNode):
-            for v in x.__dict__.values():
+            for _, v in iter_template_node_items(x):
                 walk(v)
             return
         if isinstance(x, Mapping):
@@ -65,7 +74,7 @@ def collect_calls(template: Any) -> Set[str]:
                 walk(v)
             return
         if isinstance(x, TemplateNode):
-            for v in x.__dict__.values():
+            for _, v in iter_template_node_items(x):
                 walk(v)
             return
         if isinstance(x, Mapping):
@@ -100,7 +109,7 @@ def collect_includes(template: Any) -> Set[str]:
                 walk(x.default)
             return
         if isinstance(x, TemplateNode):
-            for v in x.__dict__.values():
+            for _, v in iter_template_node_items(x):
                 walk(v)
             return
         if isinstance(x, Mapping):
@@ -137,7 +146,7 @@ def collect_pipe_stage_strings(template: Any) -> Set[str]:
                 walk(s)
             return
         if isinstance(x, TemplateNode):
-            for v in x.__dict__.values():
+            for _, v in iter_template_node_items(x):
                 walk(v)
             return
         if isinstance(x, Mapping):
@@ -212,7 +221,7 @@ def analyze_dependencies(template: Any, *, registry: Optional[FunctionRegistry] 
                 walk_dyn(x.default)
             return
         if isinstance(x, TemplateNode):
-            for v in x.__dict__.values():
+            for _, v in iter_template_node_items(x):
                 walk_dyn(v)
             return
         if isinstance(x, Mapping):

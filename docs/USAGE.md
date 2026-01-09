@@ -33,7 +33,7 @@ engine = TemplateEngine(
     include_resolver=FileIncludeResolver(search_paths=["."]),
 )
 
-tmpl = engine.load_template(
+tmpl = engine.load_template_text(
     """
 model: gpt-5
 params:
@@ -68,9 +68,9 @@ engine = TemplateEngine(base_loader=yaml.FullLoader)
 The top-level functions are thin wrappers:
 
 ```python
-from ydst import load_template, render, default_registry
+from ydst import load_template_text, render, default_registry
 
-tmpl = load_template("temperature: !var temperature")
+tmpl = load_template_text("temperature: !var temperature")
 out = render(tmpl, {"temperature": 0.2}, registry=default_registry())
 ```
 
@@ -84,7 +84,8 @@ tmpl1 = load_template_text("temperature: !var temperature")
 tmpl2 = load_template_file("template.yaml")
 ```
 
-Note: `load_template(...)` interprets a Python `str` as YAML text. Use `load_template_file(...)` when you want to load from a filesystem path.
+Note: `load_template(...)` interprets a Python `str` as a **filesystem path**.
+Use `load_template_text(...)` for YAML text.
 
 If you use render-time includes (`!include_rt`), prefer `TemplateEngine.render(...)` so the renderer has access to the engine instance.
 
@@ -96,8 +97,8 @@ Rendering behavior is controlled by `ydst.render.RenderOptions`.
 from ydst.render import RenderOptions
 
 options = RenderOptions(
-    mode="trusted",         # "trusted" (default), "expr_safe" (alias: "safe"), or "locked_down"
-    strict=True,            # missing vars error; root !omit error
+    mode="trusted",         # "trusted" (default), "expr_safe", or "locked_down"
+    strict=True,            # missing vars error; root !omit always errors
     dict_key_conflict="auto",
     wrap_exceptions=True,   # wrap errors into ydst exceptions with cause preserved
     max_depth=200,
@@ -108,11 +109,12 @@ options = RenderOptions(
 Key fields:
 
 - `strict` (default: `True`)
-  - if `True`, missing required variables raise, and root-level `!omit` raises.
-  - if `False`, missing variables become `None` (or a node-specific default), and root `!omit` is allowed.
+  - if `True`, missing required variables raise (unless a node provides a default).
+  - if `False`, missing variables become `None` (or a node-specific default).
+  - root-level `!omit` **always errors** (it has no sensible container semantics).
 - `mode`
   - `"trusted"` (default): expression attribute access and expression function calls are enabled (subject to other flags).
-  - `"expr_safe"` (alias: `"safe"`; `"safe"` is deprecated): disables expression attribute access and expression function calls (see `EXPRESSIONS.md`).
+  - `"expr_safe"`: disables expression attribute access and expression function calls (see `EXPRESSIONS.md`).
     Note: this only affects `!expr`; use the explicit policy toggles below to control `!call`, `!include_rt`, and `!pipe`.
   - `"locked_down"`: a more restrictive preset that disables `!call`, `!include_rt`, and registry-based string stages in `!pipe`, and applies the same expression restrictions as `"expr_safe"`.
 - `dict_key_conflict`
@@ -129,7 +131,7 @@ Additional policy toggles:
 - `allow_calls` (default: `True`)
 - `allow_includes` (default: `True`)
 - `allow_pipe_registry_calls` (default: `True`)
-- `strict_pipe_stages` (default: `False`)
+- `strict_pipe_stages` (default: `True`)
 - `materialize_foreach_iterables` (default: `True`)
 
 ### Expression flags

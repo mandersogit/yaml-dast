@@ -5,7 +5,19 @@ from typing import Any, Optional, Set
 
 from .errors import ErrorContext, TemplateValidationError
 from .expr import ExprPolicy, ExpressionEvaluator
-from .nodes import Call, Default, Expr, ForEach, IncludeRuntime, If, Pipe, TemplateNode, Var, UNSET
+from .nodes import (
+    Call,
+    Default,
+    Expr,
+    ForEach,
+    IncludeRuntime,
+    If,
+    Pipe,
+    TemplateNode,
+    Var,
+    UNSET,
+    iter_template_node_items,
+)
 
 # RenderOptions is imported lazily (and only for optional validation rules) to
 # keep this module usable in minimal contexts.
@@ -39,7 +51,7 @@ def collect_variables(template: Any) -> Set[str]:
             return
 
         if isinstance(x, TemplateNode):
-            for v in x.__dict__.values():
+            for _, v in iter_template_node_items(x):
                 walk(v)
             return
 
@@ -274,8 +286,8 @@ def validate_template(
             return
 
         if isinstance(x, TemplateNode):
-            # Unknown TemplateNode subclass: recurse into fields.
-            for k, v in x.__dict__.items():
+            # Unknown TemplateNode subclass: recurse into dataclass fields.
+            for k, v in iter_template_node_items(x):
                 walk(v, path + (k,))
             return
 

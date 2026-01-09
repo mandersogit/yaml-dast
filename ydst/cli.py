@@ -18,9 +18,9 @@ from .registry import (
     FunctionRegistry,
     DictFunctionRegistry,
     chain_registries,
-    default_registry,
     minimal_registry,
     safe_registry,
+    extended_registry,
 )
 from .render import RenderOptions
 from .normalize import to_jsonable
@@ -58,8 +58,8 @@ def _load_context(
 def _load_registry(module_name: Optional[str], tier: str) -> Optional[FunctionRegistry]:
     reg: Optional[FunctionRegistry] = None
 
-    if tier == "default":
-        reg = default_registry()
+    if tier == "extended":
+        reg = extended_registry()
     elif tier == "safe":
         reg = safe_registry()
     elif tier == "minimal":
@@ -146,7 +146,7 @@ def cmd_render(args: argparse.Namespace) -> None:
 
     if args.template == "-":
         template_src = sys.stdin.read()
-        tmpl = engine.load_template(template_src, source_name="<stdin>")
+        tmpl = engine.load_template_text(template_src, source_name="<stdin>")
     else:
         tmpl = engine.load_template_file(args.template)
 
@@ -171,7 +171,9 @@ def cmd_render(args: argparse.Namespace) -> None:
         wrap_exceptions=not args.raw_exceptions,
         max_depth=args.max_depth,
         max_nodes=args.max_nodes,
-        strict_pipe_stages=args.strict_pipe_stages,
+        strict_pipe_stages=(args.pipe_unknown == "error"),
+        allow_callable_pipe_stages=args.callable_pipe_stages,
+        allow_pipe_registry_calls=not args.no_pipe_registry_calls,
         trace=trace_sink,
     )
 
@@ -216,15 +218,9 @@ def build_parser() -> argparse.ArgumentParser:
     reg_group = r.add_mutually_exclusive_group()
     reg_group.add_argument(
         "--registry-tier",
-        choices=["none", "minimal", "safe", "default"],
+        choices=["none", "minimal", "safe", "extended"],
         default="none",
         help="Enable a built-in registry tier",
-    )
-    # Back-compat flag (maps to default tier).
-    reg_group.add_argument(
-        "--default-registry",
-        action="store_true",
-        help="Enable ydst.default_registry() (same as --registry-tier=default)",
     )
     r.add_argument("--registry-module", help="Python module providing REGISTRY or registry")
 
@@ -238,7 +234,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     r.add_argument("--full-loader", action="store_true", help="Use yaml.FullLoader instead of SafeLoader")
 
-    r.add_argument("--mode", choices=["trusted", "safe", "expr_safe", "locked_down"], default="trusted")
+    r.add_argument("--mode", choices=["trusted", "expr_safe", "locked_down"], default="trusted")
     r.add_argument("--non-strict", action="store_true", help="Non-strict mode (missing vars -> None/defaults)")
     r.add_argument(
         "--dict-key-conflict",
@@ -246,11 +242,38 @@ def build_parser() -> argparse.ArgumentParser:
         default="auto",
         help="Duplicate key policy during rendering",
     )
-    r.add_argument("--strict-pipe-stages", action="store_true", help="Error on unknown string pipe stages")
+    r.add_argument(
+        "--pipe-unknown",
+        choices=["error", "literal"],
+        default="error",
+        help="How to handle unknown string stages in !pipe (default: error)",
+    )
+    r.add_argument(
+        "--callable-pipe-stages",
+        action="store_true",
+        help="Allow pipe stages that render to arbitrary callables (advanced)",
+    )
+    r.add_argument(
+        "--no-pipe-registry-calls",
+        action="store_true",
+        help="Treat string pipe stages as literal values (do not call registry functions)",
+    )
 
     r.add_argument("--raw-exceptions", action="store_true", help="Do not wrap exceptions (debugging)")
     r.add_argument("--max-depth", type=int, default=200)
     r.add_argument("--max-nodes", type=int, default=None)
+
+    r.add_argument(
+        "--max-include-depth",
+        type=int,
+        default=None,
+        help="Maximum include depth for load-time !include expansion",
+    )
+    r.add_argument(
+        "--disable-load-includes",
+        action="store_true",
+        help="Disable load-time includes (!include)",
+    )
 
     r.add_argument("--output", choices=["json", "yaml"], default="json")
     r.add_argument("--output-file", help="Write output to a file instead of stdout")
@@ -268,10 +291,6 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[list[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-
-    # Back-compat flag mapping.
-    if getattr(args, "default_registry", False):
-        args.registry_tier = "default"
 
     try:
         args.func(args)  # type: ignore[misc]

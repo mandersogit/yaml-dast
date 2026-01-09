@@ -73,8 +73,7 @@ class TemplateLoaderMixin:
     @classmethod
     def add_ydst_constructors(cls) -> None:
         # Variable tags
-        for t in ("!var", "!variable"):
-            cls.add_constructor(t, _construct_var)
+        cls.add_constructor("!var", _construct_var)
 
         cls.add_constructor("!default", _construct_default)
 
@@ -89,10 +88,11 @@ class TemplateLoaderMixin:
         cls.add_constructor("!call", _construct_call)
         cls.add_constructor("!pipe", _construct_pipe)
 
-        # Includes: load-time include uses !include; render-time include uses !include_rt/!include_runtime.
+        # Includes:
+        #   - !include: load-time include
+        #   - !include_rt: render-time include
         cls.add_constructor("!include", _construct_include)
-        for t in ("!include_rt", "!include_runtime", "!include_render"):
-            cls.add_constructor(t, _construct_include_rt)
+        cls.add_constructor("!include_rt", _construct_include_rt)
 
 
 def _construct_var(loader: yaml.Loader, node: yaml.Node) -> Var:
@@ -344,12 +344,15 @@ def _construct_pipe(loader: yaml.Loader, node: yaml.Node) -> Any:
 
 
 def _construct_include(loader: yaml.Loader, node: yaml.Node) -> Any:
-    """Load-time include by default; can be configured to return a runtime include node."""
+    """Load-time include.
+
+    Notes
+    -----
+    - `!include` is *load-time only*.
+    - For render-time includes (templated targets), use `!include_rt`.
+    """
 
     mark = _mark_from_node(loader, node)
-
-    def _as_runtime(target: Any, required: bool = True, default: Any = UNSET) -> IncludeRuntime:
-        return IncludeRuntime(target=target, required=required, default=default, mark=mark)
 
     # Scalar form: !include "file.yaml" (load-time include).
     if isinstance(node, yaml.ScalarNode):
@@ -361,10 +364,11 @@ def _construct_include(loader: yaml.Loader, node: yaml.Node) -> Any:
     if isinstance(node, yaml.MappingNode):
         m = loader.construct_mapping(node, deep=True)  # type: ignore[attr-defined]
 
-        timing_val = m.get("timing", "load")
-        if not isinstance(timing_val, str) or not timing_val:
-            raise TemplateLoadError("!include 'timing' must be a non-empty string", ctx=_ctx(mark, "Include"))
-        timing = timing_val.lower()
+        if "timing" in m:
+            raise TemplateLoadError(
+                "!include no longer supports 'timing:'; use !include_rt for render-time includes",
+                ctx=_ctx(mark, "Include"),
+            )
 
         target = m.get("target") or m.get("path") or m.get("file")
         if target is None:
@@ -373,20 +377,10 @@ def _construct_include(loader: yaml.Loader, node: yaml.Node) -> Any:
         required = _require_bool(m, "required", True, mark=mark, node_type="Include")
         default = m.get("default", UNSET)
 
-        if timing in ("render", "runtime", "rt"):
-            # Render-time includes may be templated.
-            return _as_runtime(target=target, required=required, default=default)
-
-        if timing not in ("load", "parse"):
-            raise TemplateLoadError(
-                "!include 'timing' must be one of: load, render",
-                ctx=_ctx(mark, "Include"),
-            )
-
         # Load-time include requires a literal target string (no templating).
         if not isinstance(target, str) or not target:
             raise TemplateLoadError(
-                "!include load-time form requires 'target' to be a non-empty string",
+                "!include requires 'target' to be a non-empty string (templated targets must use !include_rt)",
                 ctx=_ctx(mark, "Include"),
             )
 

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import warnings
-
 from pathlib import Path
 from typing import Any, IO, Mapping, Optional, Union
 
@@ -18,28 +16,22 @@ def load_template(
     source: SourceInput,
     *,
     engine: TemplateEngine | None = None,
-    loader: TemplateEngine | None = None,
     includes: IncludeResolver | None = None,
     source_name: str | None = None,
 ) -> Any:
     """Convenience function: load a template using a default engine unless provided.
 
-    Important ergonomics note
-    -------------------------
-    If `source` is a string, it is treated as YAML *content*, not a filesystem path.
+    Semantics
+    ---------
+    `ydst.load_template` forwards to :meth:`TemplateEngine.load_template`.
 
-    For filesystem paths, prefer:
-      - :func:`ydst.load_template_file` / :meth:`TemplateEngine.load_template_file`, or
-      - pass a :class:`pathlib.Path`.
+    - If `source` is a `str`, it is treated as a **filesystem path**.
+    - If you want to parse YAML text from a Python string, use :func:`load_template_text`.
 
     Parameters
     ----------
     engine:
         A `TemplateEngine` instance to use.
-
-    loader:
-        Backwards-compatible alias for `engine`.
-        (Historically, this parameter was named `loader`, but it accepts a TemplateEngine.)
 
     includes:
         Optional include resolver to install on the default engine (ignored if `engine` is provided).
@@ -48,17 +40,7 @@ def load_template(
         Optional source identifier for error reporting.
     """
 
-    if engine is not None and loader is not None:
-        raise ValueError("Pass only one of: engine=..., loader=...")
-
-    if loader is not None:
-        warnings.warn(
-            "`loader` is deprecated; use `engine` instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-
-    eng = engine or loader or TemplateEngine(include_resolver=includes)
+    eng = engine or TemplateEngine(include_resolver=includes)
     return eng.load_template(source, source_name=source_name)
 
 
