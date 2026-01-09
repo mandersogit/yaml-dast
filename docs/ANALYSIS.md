@@ -18,11 +18,13 @@ Important limitation: **load-time includes (`!include`) are inlined during load*
 ## Example
 
 ```python
-from ydst import TemplateEngine, analyze_dependencies, default_registry
+import ydst
+import ydst.analysis as analysis
+import ydst.registry as registry
 
-engine = TemplateEngine()
+engine = ydst.TemplateEngine()
 
-tmpl = engine.load_template(
+tmpl = engine.load_template_text(
     """
 model: !default
   - !var {name: model, required: false}
@@ -41,7 +43,7 @@ settings: !include_rt
     source_name="inline.yaml",
 )
 
-deps = analyze_dependencies(tmpl, registry=default_registry())
+deps = analysis.analyze_dependencies(tmpl, registry=registry.default_registry())
 print(deps.variables)
 print(deps.calls)
 print(deps.pipe_registry_functions)

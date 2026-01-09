@@ -32,23 +32,26 @@ In production settings, it is often beneficial to validate the rendered output w
 This is *illustrative only* (ydst does not depend on DeepChainMap).
 
 ```python
-from ydst import TemplateEngine, default_registry
+import ydst
+import ydst.registry as registry
 
 # Imagine you have a DeepChainMap implementation (or any deep-merge):
 # from deep_chain_map import DeepChainMap
 
-engine = TemplateEngine()
+engine = ydst.TemplateEngine()
 
-base = engine.load_template_file("layer_base.yaml")
-override = engine.load_template_file("layer_override.yaml")
+# Load as raw node trees for merging
+base = engine.load_yaml_path("layer_base.yaml")
+override = engine.load_yaml_path("layer_override.yaml")
 
 # Treat ydst nodes as atomic leaves during merge.
 # merged = DeepChainMap(override, base).to_dict()
 merged = override  # placeholder: replace with your real merge
 
-out = engine.render(
-    merged,
+# Wrap merged tree in Template and render
+tmpl = ydst.Template(root=merged, engine=engine)
+out = tmpl.render(
     context={"mode": "dev"},
-    registry=default_registry(),
+    registry=registry.default_registry(),
 )
 ```

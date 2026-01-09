@@ -27,10 +27,11 @@ This separation makes it natural to combine ydst with independent deep-merge/lay
 ## Recommended API: `TemplateEngine`
 
 ```python
-from ydst import TemplateEngine, FileIncludeResolver, default_registry
+import ydst
+import ydst.registry as registry
 
-engine = TemplateEngine(
-    include_resolver=FileIncludeResolver(search_paths=["."]),
+engine = ydst.TemplateEngine(
+    include_resolver=ydst.FileIncludeResolver(search_paths=["."]),
 )
 
 tmpl = engine.load_template_text(
@@ -43,10 +44,9 @@ params:
     source_name="inline.yaml",
 )
 
-result = engine.render(
-    tmpl,
+result = tmpl.render(
     context={"temperature": 0.2, "base_tokens": 1000, "bonus_tokens": 500},
-    registry=default_registry(),
+    registry=registry.default_registry(),
 )
 
 print(result)
@@ -58,52 +58,67 @@ The engine defaults to `yaml.SafeLoader` but can be constructed with `yaml.FullL
 
 ```python
 import yaml
-from ydst import TemplateEngine
+import ydst
 
-engine = TemplateEngine(base_loader=yaml.FullLoader)
+engine = ydst.TemplateEngine(base_loader=yaml.FullLoader)
 ```
 
-## Convenience functions
+## Module-level convenience functions
 
-The top-level functions are thin wrappers:
+For one-shot loading and rendering (when you don't need to keep a reference to the template):
 
 ```python
-from ydst import load_template_text, render, default_registry
+import ydst
 
-tmpl = load_template_text("temperature: !var temperature")
-out = render(tmpl, {"temperature": 0.2}, registry=default_registry())
+# One-shot: load from text and render
+result = ydst.render_text(
+    "temperature: !var temperature",
+    context={"temperature": 0.2},
+)
+
+# One-shot: load from path and render
+result = ydst.render_path("template.yaml", context={"temperature": 0.2})
 ```
 
-For explicitness (and to avoid ambiguity where a string might look like a file path),
-you can use:
+These use a default engine. To customize engine settings, use `TemplateEngine` directly.
+
+### Template class for reusable templates
+
+When you want to render the same template multiple times:
 
 ```python
-from ydst import load_template_text, load_template_file
+import ydst
 
-tmpl1 = load_template_text("temperature: !var temperature")
-tmpl2 = load_template_file("template.yaml")
+# Load once
+tmpl = ydst.Template.from_text("temperature: !var temperature")
+
+# Render multiple times
+out1 = tmpl.render(context={"temperature": 0.2})
+out2 = tmpl.render(context={"temperature": 0.8})
 ```
 
-Note: `load_template(...)` interprets a Python `str` as a **filesystem path**.
-Use `load_template_text(...)` for YAML text.
+Template classmethods:
+- `Template.from_text(text)` — from YAML string
+- `Template.from_path(path)` — from filesystem path
+- `Template.from_stream(stream)` — from file-like object
 
-If you use render-time includes (`!include_rt`), prefer `TemplateEngine.render(...)` so the renderer has access to the engine instance.
+### Security-oriented convenience profile
 
-### Security-oriented convenience profiles
-
-ydst provides convenience helpers for defensive defaults when ingesting template inputs that are not fully trusted:
+ydst provides `safe_engine()` for defensive defaults when ingesting template inputs that are not fully trusted:
 
 ```python
-from ydst import load_template_text, safe_engine, safe_render
+import ydst
 
-eng = safe_engine(include_paths=["."])  # optional
-tmpl = load_template_text("temperature: !var temperature", engine=eng)
+eng = ydst.safe_engine(include_paths=["."])  # optional
+
+# Templates loaded with this engine can use render_safe() for locked-down rendering
+tmpl = eng.load_template_text("temperature: !var temperature")
 
 # Locked down by default (no calls, no includes)
-out = safe_render(tmpl, {"temperature": 0.2}, engine=eng)
+result = tmpl.render_safe(context={"temperature": 0.2})
 ```
 
-These helpers are intentionally conservative. If you need more capability, instantiate
+This is intentionally conservative. If you need more capability, instantiate
 `TemplateEngine` and `RenderOptions` directly and be explicit about which features you
 enable.
 
@@ -112,9 +127,9 @@ enable.
 Rendering behavior is controlled by :class:`ydst.RenderOptions`.
 
 ```python
-from ydst import RenderOptions
+import ydst
 
-options = RenderOptions(
+options = ydst.RenderOptions(
     mode="trusted",         # "trusted" (default), "expr_safe", or "locked_down"
     strict=True,            # missing vars error; root !omit always errors
     dict_key_conflict="auto",
@@ -167,15 +182,15 @@ Note: even with `allow_function_calls_in_expr=True`, ydst only allows calling *w
 You can attach a trace callback to observe evaluation events for template nodes:
 
 ```python
-from ydst import RenderOptions
+import ydst
 
 events = []
 
 def trace(ev):
     events.append(ev)
 
-options = RenderOptions(trace=trace)
-out = engine.render(tmpl, context=ctx, registry=reg, options=options)
+options = ydst.RenderOptions(trace=trace)
+out = tmpl.render(context=ctx, registry=reg, options=options)
 ```
 
 Trace events include:

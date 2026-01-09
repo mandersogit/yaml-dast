@@ -1,5 +1,7 @@
 # ydst examples
 
+**New to ydst?** Start with [`00-quickstart.md`](00-quickstart.md) for Python usage patterns.
+
 These examples are designed to be runnable with the `ydst` CLI and readable as copy/paste blocks.
 
 Assuming you are in the repository root (the directory containing `pyproject.toml`):

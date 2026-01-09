@@ -25,8 +25,9 @@ The resolver returns:
 ydst includes a basic filesystem resolver:
 
 ```python
-from ydst import FileIncludeResolver
-resolver = FileIncludeResolver(search_paths=[".", "./configs"])
+import ydst
+
+resolver = ydst.FileIncludeResolver(search_paths=[".", "./configs"])
 
 # Optional (in-resolver) caching for repeated resolves in long-running processes:
 # - caches both hits and misses

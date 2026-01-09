@@ -197,7 +197,7 @@ user_id: !call
 
 Semantics:
 
-- The registry is provided by the caller (e.g. `engine.render(..., registry=...)`).
+- The registry is provided by the caller (e.g. `tmpl.render(registry=...)`).
 - Arguments are rendered before calling.
 
 CLI note:

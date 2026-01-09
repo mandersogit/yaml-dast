@@ -55,9 +55,9 @@ Extended adds:
 The simplest approach is a dict wrapped in `DictFunctionRegistry`:
 
 ```python
-from ydst import DictFunctionRegistry
+import ydst
 
-REGISTRY = DictFunctionRegistry({
+REGISTRY = ydst.DictFunctionRegistry({
     "my_fn": lambda x: x,
 })
 ```

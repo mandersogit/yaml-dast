@@ -14,8 +14,8 @@ Files:
 ## Sketch (no external dependencies)
 
 ```python
-from copy import deepcopy
-from ydst import TemplateEngine, default_registry
+import ydst
+import ydst.registry as registry
 
 def deep_merge(a, b):
     # A minimal deep-merge for demonstration purposes:
@@ -34,16 +34,19 @@ def deep_merge(a, b):
         return a + b
     return b
 
-engine = TemplateEngine()
-base = engine.load_template_file("layer_base.yaml")
-override = engine.load_template_file("layer_override.yaml")
+engine = ydst.TemplateEngine()
 
-merged_template = deep_merge(base, override)
+# Load as raw node trees for merging
+base = engine.load_yaml_path("layer_base.yaml")
+override = engine.load_yaml_path("layer_override.yaml")
 
-rendered = engine.render(
-    merged_template,
+merged_tree = deep_merge(base, override)
+
+# Wrap merged tree in Template and render
+tmpl = ydst.Template(root=merged_tree, engine=engine)
+rendered = tmpl.render(
     context={"temperature": 0.7},
-    registry=default_registry(),
+    registry=registry.default_registry(),
 )
 
 print(rendered)
