@@ -1,6 +1,39 @@
 # Changelog
 
 
+## 0.4.0 (unreleased)
+
+### Breaking changes
+
+- **`!setdefault` is now enabled by default** and is no longer disabled by `mode="locked_down"`.
+  The tag is safe (cannot override caller-provided context values) and appropriate for semi-trusted templates.
+  - Removed `--allow-setdefault` CLI flag (no longer needed)
+  - `RenderOptions.allow_setdefault` now defaults to `True`
+
+- **Removed dict attribute convenience in `!expr`**: Previously, `x.key` on a dict-like object
+  would return `x["key"]` if the key existed. This behavior has been removed because it could
+  shadow dict methods (e.g., a key named `"items"` would shadow `.items()`).
+  Use explicit subscript syntax: `x["key"]`.
+
+### Fixed
+
+- **OMIT values are now correctly filtered from lists and sets**: Previously, `!omit`, `!setdefault`,
+  and `!python_module` (which all return OMIT) would appear as `Omit(mark=None)` in list output
+  instead of being filtered. This now matches the documented behavior ("In sequences, an element
+  that renders to `!omit` is skipped").
+
+### Improved
+
+- Error messages for disabled tags now include instructions on how to enable them.
+
+### Added
+
+- Comprehensive test coverage for `!python`, `!python_module`, and `!setdefault`.
+- Documentation for stateful patterns using `!python` and `!python_module` together.
+- Documentation for implicit emit limitations in `!python`.
+- Documentation for mode precedence (modes override individual options).
+
+
 ## 0.3.1 (2026-01-08)
 
 ### Fixed
