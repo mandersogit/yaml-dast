@@ -73,4 +73,4 @@ This is enabled by default because it is fundamental for working with dictionari
 
 - Prefer `!call` for complex logic.
 - Keep expressions short and side-effect free.
-- If you need to evaluate templates from untrusted sources, use `mode="safe"` / `mode="expr_safe"` (or `mode="locked_down"`) and avoid providing broad registries or filesystem include resolvers.
+- If you need to evaluate templates from untrusted sources, use `mode="expr_safe"` (alias: `mode="safe"`; `safe` is deprecated) or `mode="locked_down"` and avoid providing broad registries or filesystem include resolvers.

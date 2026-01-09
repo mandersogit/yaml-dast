@@ -66,6 +66,34 @@ class Var(TemplateNode):
 
 
 @dataclass
+class Default(TemplateNode):
+    """Coalesce / fallback.
+
+    YAML forms:
+      - !default {value: <template>, default: <template>}
+      - !default [<value>, <default>]
+
+    Semantics
+    ---------
+    Render `value`. If it:
+      - raises a MissingVariableError / IncludeError during rendering, or
+      - renders to None (when `treat_none_as_missing=True`), or
+      - renders to !omit/OMIT (when `treat_omit_as_missing=True`)
+
+    then render and return `default` instead.
+
+    Notes
+    -----
+    This is designed for ergonomic composition; it is not an error-handling sandbox.
+    """
+
+    value: Any = None
+    default: Any = field(default_factory=lambda: UNSET)
+    treat_none_as_missing: bool = True
+    treat_omit_as_missing: bool = True
+
+
+@dataclass
 class If(TemplateNode):
     """Conditional selection.
 

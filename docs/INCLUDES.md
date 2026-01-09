@@ -73,6 +73,15 @@ Load-time include requires that the engine be configured with a resolver:
 engine = TemplateEngine(include_resolver=resolver)
 ```
 
+You can explicitly disable load-time includes even if a resolver is present:
+
+```python
+engine = TemplateEngine(include_resolver=resolver, allow_load_time_includes=False)
+```
+
+Note: `RenderOptions(..., allow_includes=...)` only affects `!include_rt` (render-time includes).
+
+
 Default behavior for missing load-time includes:
 
 - If `required: true` (default), missing includes raise `TemplateLoadError`.

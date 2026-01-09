@@ -19,9 +19,9 @@ ydst's `RenderOptions` includes both a coarse-grained `mode` and several explici
   - expressions may use attribute access and function calls (subject to the registry you provide)
   - `!call` and `!include_rt` are permitted (again, only if you provided a registry/resolver)
 
-- `mode="safe"` / `mode="expr_safe"`
+- `mode="expr_safe"` (deprecated alias: `mode="safe"`)
   - restricts **only** `!expr` (no attribute access, no expression function calls)
-  - does **not** automatically disable `!call`, `!pipe` registry calls, or runtime includes
+  - does **not** automatically disable `!call`, `!pipe` registry calls, runtime includes, or load-time includes
 
 - `mode="locked_down"`
   - disables `!call`, runtime includes (`!include_rt`), and pipe registry calls
@@ -38,6 +38,20 @@ Expression surface controls:
 
 - `allow_subscripts_in_expr` (controls `x[...]` access in `!expr`)
 - `allow_private_attributes_in_expr` (controls access to `_private` / `__dunder__` attributes when attribute access is enabled)
+
+
+### Load-time includes are not controlled by RenderOptions
+
+`!include` (load-time) is resolved during `engine.load_template(...)`, before any call to `render(...)`.
+
+- Render-time controls (`RenderOptions.allow_includes`, `mode=...`) affect `!include_rt` only.
+- To disable load-time includes entirely, construct your engine with:
+
+```python
+engine = TemplateEngine(include_resolver=resolver, allow_load_time_includes=False)
+```
+
+Or avoid configuring an `include_resolver` if you do not need `!include`.
 
 ## Recommended practices
 

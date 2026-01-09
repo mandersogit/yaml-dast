@@ -74,6 +74,18 @@ tmpl = load_template("temperature: !var temperature")
 out = render(tmpl, {"temperature": 0.2}, registry=default_registry())
 ```
 
+For explicitness (and to avoid ambiguity where a string might look like a file path),
+you can use:
+
+```python
+from ydst import load_template_text, load_template_file
+
+tmpl1 = load_template_text("temperature: !var temperature")
+tmpl2 = load_template_file("template.yaml")
+```
+
+Note: `load_template(...)` interprets a Python `str` as YAML text. Use `load_template_file(...)` when you want to load from a filesystem path.
+
 If you use render-time includes (`!include_rt`), prefer `TemplateEngine.render(...)` so the renderer has access to the engine instance.
 
 ## Render options
@@ -84,7 +96,7 @@ Rendering behavior is controlled by `ydst.render.RenderOptions`.
 from ydst.render import RenderOptions
 
 options = RenderOptions(
-    mode="trusted",         # "trusted" (default), "safe"/"expr_safe", or "locked_down"
+    mode="trusted",         # "trusted" (default), "expr_safe" (alias: "safe"), or "locked_down"
     strict=True,            # missing vars error; root !omit error
     dict_key_conflict="auto",
     wrap_exceptions=True,   # wrap errors into ydst exceptions with cause preserved
@@ -100,9 +112,9 @@ Key fields:
   - if `False`, missing variables become `None` (or a node-specific default), and root `!omit` is allowed.
 - `mode`
   - `"trusted"` (default): expression attribute access and expression function calls are enabled (subject to other flags).
-  - `"safe"` / `"expr_safe"`: disables expression attribute access and expression function calls (see `EXPRESSIONS.md`).
+  - `"expr_safe"` (alias: `"safe"`; `"safe"` is deprecated): disables expression attribute access and expression function calls (see `EXPRESSIONS.md`).
     Note: this only affects `!expr`; use the explicit policy toggles below to control `!call`, `!include_rt`, and `!pipe`.
-  - `"locked_down"`: a more restrictive preset that disables `!call`, `!include_rt`, and registry-based string stages in `!pipe`, and applies the same expression restrictions as `"safe"`.
+  - `"locked_down"`: a more restrictive preset that disables `!call`, `!include_rt`, and registry-based string stages in `!pipe`, and applies the same expression restrictions as `"expr_safe"`.
 - `dict_key_conflict`
   - `"auto"`: strict→error, non-strict→last-wins
   - `"error"`: always error on duplicates

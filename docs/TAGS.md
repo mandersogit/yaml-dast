@@ -30,6 +30,43 @@ Semantics:
   - strict + required → error
   - otherwise → render `default` if provided, else `null`
 
+
+## `!default`
+
+Coalesce / fallback.
+
+Use this when you want "first non-missing" semantics without writing an `!expr`.
+
+### Sequence form
+
+```yaml
+model: !default
+  - !var {name: model, required: false}
+  - "gpt-5"
+```
+
+### Mapping form
+
+```yaml
+timeout_seconds: !default
+  value: !var {name: timeout_seconds, required: false}
+  default: 30
+  treat_none_as_missing: true
+  treat_omit_as_missing: true
+```
+
+Semantics:
+
+- Render `value`.
+- If `value` raises a `MissingVariableError` or an `IncludeError`, `default` is rendered instead.
+- If `treat_none_as_missing` is true (default), a rendered `null` triggers the fallback.
+- If `treat_omit_as_missing` is true (default), a rendered `!omit` triggers the fallback.
+
+Notes:
+
+- `!default` is intended for ergonomic composition; it does not catch arbitrary exceptions.
+- For strict control over omission, set `treat_omit_as_missing: false`.
+
 ## `!if`
 
 Conditional selection.
@@ -176,6 +213,7 @@ Pipeline stages:
 - A `!call` stage receives the prior value as its first positional argument.
 - A string stage (e.g., `slugify`) calls the named function **if present** in the registry.
   If the name is not present, the string is treated as a literal stage result.
+  To make unknown stage names an error (recommended for catching typos), enable `RenderOptions(strict_pipe_stages=True)` (or `ydst render --strict-pipe-stages`).
 - A callable stage is only invoked when `RenderOptions(allow_callable_pipe_stages=True)`.
   By default, callable stages raise an error (use `!call` or a registry string stage).
 

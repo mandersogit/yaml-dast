@@ -190,3 +190,36 @@ ydst render 06-include-runtime.yaml --context-file 06-include-runtime-prod.json 
 ## 07 — Layer then render
 
 See `07-layer-then-render.md` plus `layer_base.yaml` and `layer_override.yaml`.
+
+---
+
+## 08 — `!default` (coalesce / fallback)
+
+Template: `08-default.yaml`
+
+```yaml
+model: !default
+  - !var {name: model, required: false}
+  - "gpt-5"
+
+timeout_seconds: !default
+  value: !var {name: timeout_seconds, required: false}
+  default: 30
+  treat_none_as_missing: false
+
+raw_timeout_seconds: !var {name: timeout_seconds, required: false}
+```
+
+Context: `08-default.json`
+
+```json
+{
+  "timeout_seconds": null
+}
+```
+
+Run:
+
+```bash
+ydst render 08-default.yaml --context-file 08-default.json --default-registry
+```

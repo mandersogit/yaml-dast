@@ -1,5 +1,28 @@
 # Changelog
 
+
+## 0.1.6 (2026-01-02)
+
+### Changes
+- Added `TemplateEngine(allow_load_time_includes=...)` to explicitly disable load-time includes (`!include`), even if an include resolver is configured.
+- Improved `RenderOptions` normalization:
+  - `mode="safe"` is now a deprecated alias for `mode="expr_safe"`.
+  - `RenderOptions.validate()` is called during normalization to catch invalid option values early.
+- Improved expression compile error behavior:
+  - When `wrap_exceptions=False`, compile-time errors now surface their original exception types (e.g., `TemplateValidationError`).
+  - When wrapped, `ExpressionError` messages include the underlying reason.
+- Added explicit top-level and engine convenience loaders:
+  - `load_template_text(...)` and `load_template_file(...)` to avoid ambiguity when passing a `str`.
+- Improved error path formatting for non-string keys (avoids misleading dotted paths like `$.None`).
+- Expanded `validate_template(...)` to validate structural invariants for `!foreach`, `!call`, `!include_rt`, and `!default`, and to optionally enforce `RenderOptions` restrictions (e.g., `locked_down`).
+- Added template analysis helpers (`collect_expressions`, `collect_calls`, `collect_includes`, `analyze_dependencies`).
+- Added `to_jsonable(...)` helper for producing JSON-serializable outputs.
+- CLI improvements:
+  - `--output-file` to write rendered output to a file.
+  - `--trace` / `--trace-file` for JSONL render traces.
+  - `--disable-load-includes` to disable `!include`.
+- Added `py.typed` marker for improved typing support.
+
 ## 0.1.5 (2026-01-02)
 
 ### Correctness

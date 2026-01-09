@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import warnings
+
 from collections import ChainMap
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -7,6 +9,7 @@ from typing import Any, Callable, Optional, Tuple
 
 from .errors import (
     ErrorContext,
+    TemplateValidationError,
     ExpressionError,
     FunctionCallError,
     FunctionNotFoundError,
@@ -20,6 +23,7 @@ from .expr import ExprPolicy, ExpressionEvaluator
 from .include import IncludeResolver
 from .nodes import (
     Call,
+    Default,
     Expr,
     ForEach,
     If,
@@ -146,11 +150,65 @@ class RenderOptions:
 
     trace: Optional[TraceSink] = None
 
+    def validate(self) -> None:
+        """Validate option values (fail fast).
+
+        This is primarily to surface configuration errors early for API users.
+        The CLI already constrains many of these, but library users may not.
+        """
+        allowed_modes = {"trusted", "expr_safe", "locked_down"}
+        if self.mode not in allowed_modes:
+            raise ValueError(
+                f"Invalid RenderOptions.mode={self.mode!r}. Expected one of: {sorted(allowed_modes)}"
+            )
+
+        if not isinstance(self.max_depth, int) or self.max_depth < 0:
+            raise ValueError("RenderOptions.max_depth must be an int >= 0")
+
+        if self.max_nodes is not None:
+            if not isinstance(self.max_nodes, int) or self.max_nodes < 0:
+                raise ValueError("RenderOptions.max_nodes must be None or an int >= 0")
+
+        if self.runtime_include_cache_max is not None:
+            if not isinstance(self.runtime_include_cache_max, int) or self.runtime_include_cache_max < 0:
+                raise ValueError("RenderOptions.runtime_include_cache_max must be None or an int >= 0")
+
+        allowed_conflicts = {"auto", "error", "last", "first"}
+        if self.dict_key_conflict not in allowed_conflicts:
+            raise ValueError(
+                f"Invalid RenderOptions.dict_key_conflict={self.dict_key_conflict!r}. "
+                f"Expected one of: {sorted(allowed_conflicts)}"
+            )
+
+        # Defensive: ensure cache max is consistent with cache enable flag.
+        if self.cache_runtime_includes is False and self.runtime_include_cache_max not in (None, 0):
+            # Not an error; just a no-op configuration.
+            pass
+
     def normalized(self) -> "RenderOptions":
         """Normalize options based on mode."""
         o = RenderOptions(**self.__dict__)
 
-        mode = (o.mode or "trusted").replace("-", "_").lower()
+        raw_mode = (o.mode or "trusted").replace("-", "_").lower()
+        # Historically we accepted mode="safe" and mode="lockdown" as aliases.
+        # These names are easy to over-interpret; keep them as deprecated aliases for
+        # the more explicit canonical modes.
+        if raw_mode == "safe":
+            warnings.warn(
+                'RenderOptions.mode="safe" is deprecated; use mode="expr_safe" instead.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            mode = "expr_safe"
+        elif raw_mode == "lockdown":
+            warnings.warn(
+                'RenderOptions.mode="lockdown" is deprecated; use mode="locked_down" instead.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            mode = "locked_down"
+        else:
+            mode = raw_mode
 
         if mode in ("safe", "expr_safe"):
             # "Safe" in ydst means: safe-ish *expressions*.
@@ -178,6 +236,7 @@ class RenderOptions:
 
         # Preserve the normalized mode string.
         o.mode = mode
+        o.validate()
         return o
 
     def dict_conflict_policy(self) -> str:
@@ -415,6 +474,8 @@ def _render_node(node: TemplateNode, ctx: RenderContext) -> Any:
 
     if isinstance(node, Var):
         return _render_var(node, ctx)
+    if isinstance(node, Default):
+        return _render_default(node, ctx)
 
     if isinstance(node, If):
         return _render_if(node, ctx)
@@ -459,6 +520,31 @@ def _render_var(node: Var, ctx: RenderContext) -> Any:
         return _render_any(node.default, ctx)
 
     return None
+
+
+
+def _render_default(node: Default, ctx: RenderContext) -> Any:
+    """Render a !default node."""
+
+    if node.default is UNSET:
+        # Programmatic templates may omit a fallback; YAML loader enforces presence.
+        raise RenderError(
+            "!default requires a 'default' value",
+            ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="Default"),
+        )
+
+    try:
+        val = _render_any(node.value, ctx)
+    except (MissingVariableError, IncludeError):
+        return _render_any(node.default, ctx)
+
+    if node.treat_omit_as_missing and (val is OMIT or isinstance(val, Omit)):
+        return _render_any(node.default, ctx)
+
+    if node.treat_none_as_missing and val is None:
+        return _render_any(node.default, ctx)
+
+    return val
 
 
 def _render_if(node: If, ctx: RenderContext) -> Any:
@@ -652,11 +738,22 @@ def _render_expr(node: Expr, ctx: RenderContext) -> Any:
                 node.expr,
                 ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="Expr"),
             )
-        except Exception as e:
+        except TemplateValidationError as e:
+            if not ctx.options.wrap_exceptions:
+                raise
+            # Preserve the underlying reason (policy rejection / unsupported syntax) in the message.
             raise ExpressionError(
-                f"Invalid expression: {node.expr}",
+                f"Invalid expression: {node.expr!r}: {e.args[0]}",
                 ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="Expr"),
-                cause=e if ctx.options.wrap_exceptions else None,
+                cause=e,
+            )
+        except Exception as e:
+            if not ctx.options.wrap_exceptions:
+                raise
+            raise ExpressionError(
+                f"Invalid expression: {node.expr!r}: {e}",
+                ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="Expr"),
+                cause=e,
             )
         if cache is not None:
             cache[node.expr] = compiled
@@ -674,10 +771,12 @@ def _render_expr(node: Expr, ctx: RenderContext) -> Any:
             cause=e if ctx.options.wrap_exceptions else None,
         )
     except PermissionError as e:
+        if not ctx.options.wrap_exceptions:
+            raise
         raise ExpressionError(
             str(e),
             ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="Expr"),
-            cause=e if ctx.options.wrap_exceptions else None,
+            cause=e,
         )
     except Exception as e:
         if ctx.options.wrap_exceptions:

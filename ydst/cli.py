@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional
 import yaml
 
 from .engine import TemplateEngine
-from .errors import YdstError
+from .errors import YdstError, format_path, format_mark
 from .include import FileIncludeResolver
 from .nodes import OMIT, Omit
 from .registry import (
@@ -23,6 +23,7 @@ from .registry import (
     safe_registry,
 )
 from .render import RenderOptions
+from .normalize import to_jsonable
 
 
 def _load_context(
@@ -88,33 +89,43 @@ def _load_registry(module_name: Optional[str], tier: str) -> Optional[FunctionRe
     return reg
 
 
-_JSON_KEY_TYPES = (str, int, float, bool, type(None))
 
 
-def _to_jsonable(obj: Any) -> Any:
-    """Best-effort conversion to JSON-serializable structures.
+def _truncate_repr(obj: object, *, max_len: int = 500) -> str:
+    r = repr(obj)
+    if len(r) > max_len:
+        return r[: max_len - 3] + "..."
+    return r
 
-    We primarily handle Python `set` (unsupported by `json`) by converting it to a stable list.
-    We also normalize dict keys that are not valid JSON key types.
+
+def _build_trace_sink(trace_file: Optional[str]) -> tuple[Optional[callable], Optional[Any]]:
+    """Build a trace sink and optional file handle.
+
+    The sink writes JSON lines with basic per-node information.
     """
 
-    if obj is OMIT or isinstance(obj, Omit):
-        return None
+    if trace_file:
+        fh: Any = open(trace_file, "w", encoding="utf-8")
+        stream = fh
+    else:
+        fh = None
+        stream = sys.stderr
 
-    if isinstance(obj, dict):
-        out: dict[Any, Any] = {}
-        for k, v in obj.items():
-            kk = k if isinstance(k, _JSON_KEY_TYPES) else str(k)
-            out[kk] = _to_jsonable(v)
-        return out
-    if isinstance(obj, (list, tuple)):
-        return [_to_jsonable(v) for v in obj]
-    if isinstance(obj, set):
-        items = [_to_jsonable(v) for v in obj]
-        # Stable output even for mixed/non-orderable elements.
-        return sorted(items, key=lambda x: repr(x))
-    return obj
+    def sink(ev: Any) -> None:  # TraceEvent
+        try:
+            rec = {
+                "path": format_path(getattr(ev, "path", ())),
+                "node_type": getattr(ev, "node_type", None),
+                "mark": format_mark(getattr(ev, "mark", None)),
+                "before": _truncate_repr(getattr(ev, "before", None)),
+                "after": _truncate_repr(getattr(ev, "after", None)),
+            }
+            stream.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        except Exception:
+            # Trace should never crash the render.
+            pass
 
+    return sink, fh
 
 def cmd_render(args: argparse.Namespace) -> None:
     include_resolver = None
@@ -126,7 +137,12 @@ def cmd_render(args: argparse.Namespace) -> None:
         )
 
     base_loader = yaml.FullLoader if args.full_loader else yaml.SafeLoader
-    engine = TemplateEngine(include_resolver=include_resolver, base_loader=base_loader)
+    engine = TemplateEngine(
+        include_resolver=include_resolver,
+        base_loader=base_loader,
+        max_include_depth=args.max_include_depth,
+        allow_load_time_includes=not args.disable_load_includes,
+    )
 
     if args.template == "-":
         template_src = sys.stdin.read()
@@ -143,6 +159,11 @@ def cmd_render(args: argparse.Namespace) -> None:
 
     registry = _load_registry(args.registry_module, args.registry_tier)
 
+    trace_sink = None
+    trace_fh = None
+    if getattr(args, "trace", False) or getattr(args, "trace_file", None):
+        trace_sink, trace_fh = _build_trace_sink(getattr(args, "trace_file", None))
+
     options = RenderOptions(
         mode=args.mode,
         strict=not args.non_strict,
@@ -151,6 +172,7 @@ def cmd_render(args: argparse.Namespace) -> None:
         max_depth=args.max_depth,
         max_nodes=args.max_nodes,
         strict_pipe_stages=args.strict_pipe_stages,
+        trace=trace_sink,
     )
 
     out = engine.render(tmpl, context=ctx, registry=registry, options=options)
@@ -159,11 +181,23 @@ def cmd_render(args: argparse.Namespace) -> None:
     if out is OMIT or isinstance(out, Omit):
         out = None
 
-    if args.output == "json":
-        json.dump(_to_jsonable(out), sys.stdout, indent=2, sort_keys=False)
-        sys.stdout.write("\n")
-    else:
-        yaml.safe_dump(out, sys.stdout, sort_keys=False)
+    output_stream = sys.stdout
+    out_fh = None
+    if getattr(args, "output_file", None):
+        out_fh = open(args.output_file, "w", encoding="utf-8")
+        output_stream = out_fh
+
+    try:
+        if args.output == "json":
+            json.dump(to_jsonable(out), output_stream, indent=2, sort_keys=False)
+            output_stream.write("\n")
+        else:
+            yaml.safe_dump(out, output_stream, sort_keys=False)
+    finally:
+        if out_fh is not None:
+            out_fh.close()
+        if trace_fh is not None:
+            trace_fh.close()
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -219,6 +253,10 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--max-nodes", type=int, default=None)
 
     r.add_argument("--output", choices=["json", "yaml"], default="json")
+    r.add_argument("--output-file", help="Write output to a file instead of stdout")
+
+    r.add_argument("--trace", action="store_true", help="Emit per-node trace events as JSON lines to stderr")
+    r.add_argument("--trace-file", help="Write trace events (JSONL) to the given file")
 
     r.add_argument("--debug", action="store_true", help="Show full tracebacks on error")
 

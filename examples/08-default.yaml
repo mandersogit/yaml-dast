@@ -1,0 +1,14 @@
+# Example: !default (coalesce / fallback)
+
+model: !default
+  - !var {name: model, required: false}
+  - "gpt-5"
+
+# If timeout_seconds is present but null, this returns null because treat_none_as_missing is false.
+# Set treat_none_as_missing: true to coalesce null to the fallback.
+timeout_seconds: !default
+  value: !var {name: timeout_seconds, required: false}
+  default: 30
+  treat_none_as_missing: false
+
+raw_timeout_seconds: !var {name: timeout_seconds, required: false}

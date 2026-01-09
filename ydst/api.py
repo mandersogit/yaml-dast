@@ -24,6 +24,14 @@ def load_template(
 ) -> Any:
     """Convenience function: load a template using a default engine unless provided.
 
+    Important ergonomics note
+    -------------------------
+    If `source` is a string, it is treated as YAML *content*, not a filesystem path.
+
+    For filesystem paths, prefer:
+      - :func:`ydst.load_template_file` / :meth:`TemplateEngine.load_template_file`, or
+      - pass a :class:`pathlib.Path`.
+
     Parameters
     ----------
     engine:
@@ -52,6 +60,34 @@ def load_template(
 
     eng = engine or loader or TemplateEngine(include_resolver=includes)
     return eng.load_template(source, source_name=source_name)
+
+
+def load_template_text(
+    text: str,
+    *,
+    engine: TemplateEngine | None = None,
+    includes: IncludeResolver | None = None,
+    source_name: str | None = None,
+) -> Any:
+    """Load a template from a YAML text string.
+
+    This is equivalent to :func:`load_template` but makes it explicit that the input is YAML content.
+    """
+
+    eng = engine or TemplateEngine(include_resolver=includes)
+    return eng.load_template_text(text, source_name=source_name)
+
+
+def load_template_file(
+    path: str | Path,
+    *,
+    engine: TemplateEngine | None = None,
+    includes: IncludeResolver | None = None,
+) -> Any:
+    """Load a template from a filesystem path."""
+
+    eng = engine or TemplateEngine(include_resolver=includes)
+    return eng.load_template_file(path)
 
 
 def render(

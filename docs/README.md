@@ -13,6 +13,7 @@ ydst is a Python library that loads YAML into a **template object graph** (plain
 - **Includes:** [`INCLUDES.md`](INCLUDES.md)
 - **CLI:** [`CLI.md`](CLI.md)
 - **Security notes:** [`SECURITY.md`](SECURITY.md)
+- **Template analysis helpers:** [`ANALYSIS.md`](ANALYSIS.md)
 - **Integration patterns (layering/merging):** [`INTEGRATION.md`](INTEGRATION.md)
 
 ## Examples

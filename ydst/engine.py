@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
-from typing import Any, Callable, Dict, IO, Optional, Type, Union
+from typing import Any, Callable, Dict, IO, Mapping, Optional, Type, Union
 
 import yaml
 
@@ -33,10 +33,12 @@ class TemplateEngine:
         self,
         *,
         include_resolver: Optional[IncludeResolver] = None,
+        allow_load_time_includes: bool = True,
         base_loader: Type[yaml.Loader] = yaml.SafeLoader,
         max_include_depth: Optional[int] = None,
     ):
         self.include_resolver = include_resolver
+        self.allow_load_time_includes = allow_load_time_includes
         self.base_loader = base_loader
         self.max_include_depth = max_include_depth
         self._loader_class = self._make_loader_class(base_loader)
@@ -66,7 +68,8 @@ class TemplateEngine:
         """Load YAML and return a template object graph (plain values + TemplateNodes).
 
         `source` is treated as YAML content if it's a string.
-        For filesystem paths, pass a `pathlib.Path` (or call `load_template_file`).
+        For filesystem paths, pass a `pathlib.Path` (or call `load_template_file` / `load_template_path`).
+        For clarity, you can use `load_template_text` when you are passing YAML content as a string.
         """
         include_stack: list[str] = []
         return self._load_template_internal(source, source_name=source_name, include_stack=include_stack)
@@ -75,6 +78,21 @@ class TemplateEngine:
         """Load a YAML template from a filesystem path."""
         p = Path(path)
         return self.load_template(p, source_name=str(p))
+
+    def load_template_text(self, text: str, *, source_name: Optional[str] = None) -> Any:
+        """Load a YAML template from a text string.
+
+        This is equivalent to `load_template(text)` but is explicit about the intent.
+        """
+        include_stack: list[str] = []
+        return self._load_template_internal(text, source_name=source_name, include_stack=include_stack)
+
+    def load_template_path(self, path: Union[str, Path]) -> Any:
+        """Alias for :meth:`load_template_file`.
+
+        Provided for API clarity: "path" is unambiguously treated as a filesystem path.
+        """
+        return self.load_template_file(path)
 
     def _load_template_internal(self, source: SourceInput, *, source_name: Optional[str], include_stack: list[str]) -> Any:
         if isinstance(source, Path):
@@ -163,6 +181,14 @@ class TemplateEngine:
         required: bool = True,
         default: Any = UNSET,
     ) -> Any:
+        if not self.allow_load_time_includes:
+            if required:
+                raise TemplateLoadError(
+                    "!include (load-time) is disabled by engine configuration",
+                    ctx=ErrorContext(mark=mark, node_type="Include"),
+                )
+            return None if default is UNSET else default
+
         resolver = self.include_resolver
         if resolver is None:
             if required:
@@ -219,14 +245,14 @@ class TemplateEngine:
         self,
         template: Any,
         *,
-        context: Optional[dict[str, Any]] = None,
+        context: Optional[Mapping[str, Any]] = None,
         registry: Optional[FunctionRegistry] = None,
         options: Optional[RenderOptions] = None,
         include_resolver: Optional[IncludeResolver] = None,
     ) -> Any:
         return render_template(
             template,
-            context=context or {},
+            context=dict(context or {}),
             registry=registry,
             options=options,
             engine=self,

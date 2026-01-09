@@ -8,6 +8,7 @@ from .errors import ErrorContext, TemplateLoadError
 from .include import IncludeResolver
 from .nodes import (
     Call,
+    Default,
     Expr,
     ForEach,
     If,
@@ -75,6 +76,8 @@ class TemplateLoaderMixin:
         for t in ("!var", "!variable"):
             cls.add_constructor(t, _construct_var)
 
+        cls.add_constructor("!default", _construct_default)
+
         cls.add_constructor("!if", _construct_if)
         cls.add_constructor("!foreach", _construct_foreach)
 
@@ -112,6 +115,65 @@ def _construct_var(loader: yaml.Loader, node: yaml.Node) -> Var:
 
     raise TemplateLoadError("Unsupported YAML node form for !var", ctx=_ctx(mark, "Var"))
 
+
+
+
+
+def _construct_default(loader: yaml.Loader, node: yaml.Node) -> Default:
+    """Construct a !default node.
+
+    Forms:
+      - !default {value: <template>, default: <template>, treat_none_as_missing?: bool, treat_omit_as_missing?: bool}
+      - !default [<value>, <default>]
+    """
+
+    mark = _mark_from_node(loader, node)
+
+    if isinstance(node, yaml.SequenceNode):
+        seq = loader.construct_sequence(node, deep=True)  # type: ignore[attr-defined]
+        if not isinstance(seq, list) or len(seq) != 2:
+            raise TemplateLoadError(
+                "!default sequence form requires exactly 2 items: [value, default]",
+                ctx=_ctx(mark, "Default"),
+            )
+        value, default = seq
+        return Default(value=value, default=default, mark=mark)
+
+    if isinstance(node, yaml.MappingNode):
+        m = loader.construct_mapping(node, deep=True)  # type: ignore[attr-defined]
+
+        if "value" not in m and "val" not in m:
+            raise TemplateLoadError("!default requires 'value'", ctx=_ctx(mark, "Default"))
+        value = m.get("value", m.get("val"))
+
+        if "default" not in m and "fallback" not in m:
+            raise TemplateLoadError("!default requires 'default' (or 'fallback')", ctx=_ctx(mark, "Default"))
+        default = m.get("default", m.get("fallback"))
+
+        treat_none_as_missing = _require_bool(
+            m,
+            "treat_none_as_missing",
+            True,
+            mark=mark,
+            node_type="Default",
+        )
+        treat_omit_as_missing = _require_bool(
+            m,
+            "treat_omit_as_missing",
+            True,
+            mark=mark,
+            node_type="Default",
+        )
+
+        return Default(
+            value=value,
+            default=default,
+            treat_none_as_missing=treat_none_as_missing,
+            treat_omit_as_missing=treat_omit_as_missing,
+            mark=mark,
+        )
+
+    raise TemplateLoadError("Unsupported YAML node form for !default", ctx=_ctx(mark, "Default"))
 
 def _construct_if(loader: yaml.Loader, node: yaml.Node) -> If:
     mark = _mark_from_node(loader, node)

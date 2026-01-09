@@ -7,20 +7,28 @@ from .nodes import SourceMark
 
 
 def format_path(path: Sequence[Any]) -> str:
+    """Format a render/load path into a JSONPath-like string.
+
+    Rules:
+      - root is `$`
+      - integer segments use `[idx]`
+      - string identifier segments use dotted form (`.name`)
+      - everything else uses bracketed repr (`[{repr(key)}]`)
+
+    We intentionally only use dotted notation for *actual strings* to avoid
+    surprising output for keys like None ("None" isidentifier -> `$.None`).
+    """
     if not path:
         return "$"  # root
-    parts: list[str] = ["$"]
 
+    parts: list[str] = ["$"]
     for p in path:
         if isinstance(p, int):
             parts.append(f"[{p}]")
+        elif isinstance(p, str) and p.isidentifier():
+            parts.append(f".{p}")
         else:
-            # dotted if safe identifier, bracketed otherwise
-            s = str(p)
-            if s and s.isidentifier():
-                parts.append(f".{s}")
-            else:
-                parts.append(f"[{s!r}]")
+            parts.append(f"[{p!r}]")
     return "".join(parts)
 
 

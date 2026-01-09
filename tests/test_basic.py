@@ -229,7 +229,7 @@ m: !foreach
                 tmpl,
                 context={"xs": [1, 2, 3]},
                 registry=default_registry(),
-                options=RenderOptions(mode="safe"),
+                options=RenderOptions(mode="expr_safe"),
             )
 
     def test_max_depth_applies_to_containers(self):

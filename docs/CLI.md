@@ -13,6 +13,24 @@ pip install -e .
 ```bash
 ydst render template.yaml --context-file ctx.json --default-registry
 ```
+Write output to a file:
+
+```bash
+ydst render template.yaml --context-file ctx.json --output-file out.json
+```
+
+Enable a JSONL trace of render events (written to stderr by default):
+
+```bash
+ydst render template.yaml --context-file ctx.json --trace
+```
+
+Or write trace to a file:
+
+```bash
+ydst render template.yaml --context-file ctx.json --trace-file trace.jsonl
+```
+
 
 Read template from stdin:
 
@@ -47,6 +65,12 @@ In non-strict mode (`--non-strict`), a root-level `!omit` renders as JSON/YAML `
 ydst render template.yaml --context-file ctx.json --include-path . --default-registry
 ```
 
+Disable load-time includes (`!include`) even if include paths are configured:
+
+```bash
+ydst render template.yaml --context-file ctx.json --include-path . --disable-load-includes
+```
+
 Hardening options:
 
 - `--include-disallow-absolute` disallows absolute include targets
@@ -59,7 +83,7 @@ Hardening options:
 
 ## Modes and strictness
 
-- `--mode trusted|safe|expr_safe|locked_down`
+- `--mode trusted|expr_safe|locked_down` (alias: `safe` is accepted but deprecated)
 - `--non-strict` toggles global strictness off
 
 `locked_down` is intended as a safer preset: it disables `!call`, disables render-time includes, and disables string-to-registry resolution in `!pipe`.

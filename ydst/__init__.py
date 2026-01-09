@@ -10,7 +10,8 @@ See README.md for usage examples.
 """
 
 from .engine import TemplateEngine
-from .api import load_template, render
+from .api import load_template, load_template_text, load_template_file, render
+from .normalize import to_jsonable
 from .nodes import (
     SourceMark,
     TemplateNode,
@@ -18,6 +19,7 @@ from .nodes import (
     OMIT,
     UNSET,
     Var,
+    Default,
     If,
     ForEach,
     Expr,
@@ -40,6 +42,14 @@ from .errors import (
 )
 from .include import IncludeResolver, FileIncludeResolver, IncludeResult
 from .validate import validate_template, collect_variables
+from .analysis import (
+    collect_expressions,
+    collect_calls,
+    collect_includes,
+    collect_pipe_stage_strings,
+    analyze_dependencies,
+    Dependencies,
+)
 from .registry import (
     FunctionRegistry,
     default_registry,
@@ -54,10 +64,19 @@ __all__ = [
     # Engine / API
     "TemplateEngine",
     "load_template",
+    "load_template_text",
+    "load_template_file",
     "render",
+    "to_jsonable",
     # Validation / analysis
     "validate_template",
     "collect_variables",
+    "collect_expressions",
+    "collect_calls",
+    "collect_includes",
+    "collect_pipe_stage_strings",
+    "analyze_dependencies",
+    "Dependencies",
     # Nodes / sentinels
     "SourceMark",
     "TemplateNode",
@@ -65,6 +84,7 @@ __all__ = [
     "OMIT",
     "UNSET",
     "Var",
+    "Default",
     "If",
     "ForEach",
     "Expr",
