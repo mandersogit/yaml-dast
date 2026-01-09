@@ -39,13 +39,25 @@ from .errors import (
     IncludeCycleError,
 )
 from .include import IncludeResolver, FileIncludeResolver, IncludeResult
-from .registry import FunctionRegistry, default_registry, DictFunctionRegistry
+from .validate import validate_template, collect_variables
+from .registry import (
+    FunctionRegistry,
+    default_registry,
+    safe_registry,
+    minimal_registry,
+    extended_registry,
+    DictFunctionRegistry,
+    chain_registries,
+)
 
 __all__ = [
     # Engine / API
     "TemplateEngine",
     "load_template",
     "render",
+    # Validation / analysis
+    "validate_template",
+    "collect_variables",
     # Nodes / sentinels
     "SourceMark",
     "TemplateNode",
@@ -77,6 +89,10 @@ __all__ = [
     "IncludeResult",
     # Registry
     "FunctionRegistry",
-    "default_registry",
     "DictFunctionRegistry",
+    "chain_registries",
+    "minimal_registry",
+    "safe_registry",
+    "default_registry",
+    "extended_registry",
 ]

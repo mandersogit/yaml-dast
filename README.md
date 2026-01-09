@@ -71,3 +71,4 @@ ydst render template.yaml --context-file ctx.json --default-registry
 - YAML anchors/aliases are supported by the YAML loader, but the renderer produces new dict/list objects,
   so alias identity is generally not preserved in the output.
 - This library is **not** a sandbox for untrusted code; expression evaluation is restricted, but treat templates as trusted.
+  If you need additional defense-in-depth, consider using `RenderOptions(mode="locked_down")`, a reduced registry (e.g. `safe_registry()` / `minimal_registry()`), and `FileIncludeResolver(..., allow_absolute=False, enforce_roots=True)`.

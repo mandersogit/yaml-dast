@@ -58,26 +58,69 @@ class RenderOptions:
         strict=False -> last-wins
       You can force last-wins while still strict by setting dict_key_conflict='last'.
 
+    Mode semantics
+    --------------
+    `mode` is a convenience preset; it simply sets other flags via `normalized()`.
+
+    - `trusted`: no automatic restrictions.
+    - `safe` / `expr_safe`: disables attribute access and function calls inside `!expr`.
+    - `locked_down`: a stricter preset intended for untrusted-ish templates. It disables:
+        * `!expr` attribute access and calls
+        * `!call`
+        * registry calls from `!pipe` string stages
+        * render-time includes (`!include_rt`)
+
     Security note
     -------------
-    - `mode='safe'` only affects what is permitted inside `!expr`.
-      It does **not** disable registry calls via `!call` / `!pipe` or file includes.
+    ydst is not a sandbox. These controls reduce footguns but do not make rendering
+    arbitrary templates safe against malicious inputs.
     """
 
-    mode: str = "trusted"  # "trusted" | "safe"
+    mode: str = "trusted"  # trusted|safe|expr_safe|locked_down
     strict: bool = True
 
+    # -----------------
     # !expr policy
+    # -----------------
     allow_attribute_access_in_expr: bool = True
     allow_function_calls_in_expr: bool = True
     allow_method_calls_in_expr: bool = False
 
+    # -----------------
+    # !call policy
+    # -----------------
+    allow_calls: bool = True
+
+    # -----------------
+    # !include_rt policy
+    # -----------------
+    allow_includes: bool = True
+
+    # -----------------
     # !pipe policy
+    # -----------------
     # If True, any pipeline stage that renders to a callable will be invoked with the
     # current value. If False, use `!call` (registry) or a string stage naming a registry function.
     allow_callable_pipe_stages: bool = False
 
+    # If True, string stages are allowed to call registry functions (when present).
+    # If False, string stages are treated as literal values.
+    allow_pipe_registry_calls: bool = True
+
+    # If True, unknown string stages (that are not registry functions) raise an error
+    # instead of being treated as literal strings.
+    strict_pipe_stages: bool = False
+
+    # -----------------
+    # !foreach policy
+    # -----------------
+    # If True, coerce the `in:` value to a list up front (preserves historical behavior).
+    # If False, iterate streaming for iterators/generators (can reduce memory use).
+    materialize_foreach_iterables: bool = True
+
+    # -----------------
     # Structural limits
+    # -----------------
     max_depth: int = 200
     max_nodes: Optional[int] = None
 
@@ -98,14 +141,31 @@ class RenderOptions:
     def normalized(self) -> "RenderOptions":
         """Normalize options based on mode."""
         o = RenderOptions(**self.__dict__)
-        if o.mode == "safe":
-            # In safe mode, do not allow attribute/method/calls in expressions.
+
+        mode = (o.mode or "trusted").replace("-", "_").lower()
+
+        if mode in ("safe", "expr_safe"):
+            # "Safe" in ydst means: safe-ish *expressions*.
             o.allow_attribute_access_in_expr = False
             o.allow_function_calls_in_expr = False
             o.allow_method_calls_in_expr = False
-
             # Also disallow implicit callable stages in !pipe, since this bypasses the registry.
             o.allow_callable_pipe_stages = False
+
+        if mode in ("locked_down", "lockdown"):
+            # Start from expr-safe.
+            o.allow_attribute_access_in_expr = False
+            o.allow_function_calls_in_expr = False
+            o.allow_method_calls_in_expr = False
+            o.allow_callable_pipe_stages = False
+
+            # And additionally disable the main "escape hatches".
+            o.allow_calls = False
+            o.allow_includes = False
+            o.allow_pipe_registry_calls = False
+
+        # Preserve the normalized mode string.
+        o.mode = mode
         return o
 
     def dict_conflict_policy(self) -> str:
@@ -126,6 +186,7 @@ class RenderContext:
 
     # Internal helpers/caches (filled by render_template).
     expr_evaluator: Optional[ExpressionEvaluator] = None
+    expr_compile_cache: Optional[dict[str, Any]] = None
     runtime_include_cache: Optional[dict[str, Any]] = None
 
     path: list[Any] = None  # type: ignore[assignment]
@@ -172,6 +233,9 @@ def render_template(
         return fn if callable(fn) else None
 
     ctx.expr_evaluator = ExpressionEvaluator(policy=policy, function_resolver=_fn_resolver)
+
+    # Cache compiled expressions per render invocation (avoid mutating shared template nodes).
+    ctx.expr_compile_cache = {}
 
     if ctx.options.cache_runtime_includes and (
         ctx.options.runtime_include_cache_max is None or ctx.options.runtime_include_cache_max > 0
@@ -372,11 +436,21 @@ def _render_if(node: If, ctx: RenderContext) -> Any:
     return _render_any(branch, ctx)
 
 
-def _materialize_iterable(value: Any) -> list[Any]:
+def _iter_foreach_items(value: Any, *, materialize: bool) -> Any:
+    """Coerce a !foreach input into an iterable.
+
+    If `materialize` is True, iterators/generators are converted to a list up front.
+    If False, we iterate streaming (useful for large or unbounded iterables).
+    """
+
     if value is None:
-        return []
+        return ()
     if isinstance(value, (str, bytes, bytearray)):
         raise TypeError("Cannot iterate over string/bytes in !foreach")
+    if not materialize:
+        return value
+    if isinstance(value, (list, tuple)):
+        return value
     return list(value)
 
 
@@ -388,7 +462,7 @@ def _render_foreach(node: ForEach, ctx: RenderContext) -> Any:
         ctx.path.pop()
 
     try:
-        items = _materialize_iterable(seq_val)
+        items = _iter_foreach_items(seq_val, materialize=ctx.options.materialize_foreach_iterables)
     except Exception as e:
         raise RenderError(
             f"!foreach 'in' is not iterable: {e}",
@@ -457,8 +531,17 @@ def _render_foreach(node: ForEach, ctx: RenderContext) -> Any:
             else:  # dict
                 ctx.path.append(idx)
                 try:
-                    rk = _render_any(node.key, ctx)
-                    rv = _render_any(node.value, ctx)
+                    ctx.path.append("key")
+                    try:
+                        rk = _render_any(node.key, ctx)
+                    finally:
+                        ctx.path.pop()
+
+                    ctx.path.append("value")
+                    try:
+                        rv = _render_any(node.value, ctx)
+                    finally:
+                        ctx.path.pop()
                 finally:
                     ctx.path.pop()
 
@@ -522,7 +605,11 @@ def _render_expr(node: Expr, ctx: RenderContext) -> Any:
 
     env = _build_expr_env(ctx)
 
-    compiled = node._compiled
+    cache = ctx.expr_compile_cache
+    compiled = None
+    if cache is not None:
+        compiled = cache.get(node.expr)
+
     if compiled is None:
         try:
             compiled = evaluator.compile(
@@ -535,7 +622,8 @@ def _render_expr(node: Expr, ctx: RenderContext) -> Any:
                 ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="Expr"),
                 cause=e if ctx.options.wrap_exceptions else None,
             )
-        node._compiled = compiled
+        if cache is not None:
+            cache[node.expr] = compiled
 
     try:
         return evaluator.eval(compiled, env)
@@ -566,6 +654,12 @@ def _render_expr(node: Expr, ctx: RenderContext) -> Any:
 
 
 def _render_call(node: Call, ctx: RenderContext, *, pipe_input: Any = None, include_pipe_input: bool = False) -> Any:
+    if not ctx.options.allow_calls:
+        raise RenderError(
+            "!call is disabled by render options",
+            ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="Call"),
+        )
+
     fn_val = (
         _render_any(node.fn, ctx)
         if isinstance(node.fn, TemplateNode) or isinstance(node.fn, (Mapping, Sequence))
@@ -644,11 +738,46 @@ def _render_pipe(node: Any, ctx: RenderContext) -> Any:
 
             rendered_stage = _render_any(stage, ctx)
 
-            if isinstance(rendered_stage, str) and ctx.registry is not None:
+            if (
+                isinstance(rendered_stage, str)
+                and ctx.registry is not None
+                and ctx.options.allow_pipe_registry_calls
+            ):
                 fn = ctx.registry.get(rendered_stage)
                 if fn is not None and callable(fn):
-                    value = fn(value)
+                    try:
+                        value = fn(value)
+                    except Exception as e:
+                        if ctx.options.wrap_exceptions:
+                            raise FunctionCallError(
+                                f"Function '{rendered_stage}' raised: {e}",
+                                ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="Pipe"),
+                                cause=e,
+                            )
+                        raise
                     continue
+
+                if ctx.options.strict_pipe_stages:
+                    avail: list[str] = []
+                    keys_fn = getattr(ctx.registry, "keys", None)
+                    if callable(keys_fn):
+                        try:
+                            avail = [str(k) for k in list(keys_fn())]
+                        except Exception:
+                            avail = []
+
+                    msg = f"Unknown pipe stage function: {rendered_stage!r}"
+                    if avail:
+                        avail_sorted = sorted(avail)
+                        sample = ", ".join(avail_sorted[:20])
+                        if len(avail_sorted) > 20:
+                            sample += f", ... (+{len(avail_sorted) - 20} more)"
+                        msg += f" (available: {sample})"
+
+                    raise RenderError(
+                        msg,
+                        ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="Pipe"),
+                    )
 
                 # If the string is not a known registry function, treat it as a literal value.
                 value = rendered_stage
@@ -660,7 +789,16 @@ def _render_pipe(node: Any, ctx: RenderContext) -> Any:
                         "Callable pipe stages are disabled. Use !call or a string stage naming a registry function.",
                         ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="Pipe"),
                     )
-                value = rendered_stage(value)
+                try:
+                    value = rendered_stage(value)
+                except Exception as e:
+                    if ctx.options.wrap_exceptions:
+                        raise RenderError(
+                            f"Callable pipe stage raised: {e}",
+                            ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="Pipe"),
+                            cause=e,
+                        )
+                    raise
                 continue
 
             value = rendered_stage
@@ -671,6 +809,12 @@ def _render_pipe(node: Any, ctx: RenderContext) -> Any:
 
 
 def _render_include_runtime(node: IncludeRuntime, ctx: RenderContext) -> Any:
+    if not ctx.options.allow_includes:
+        raise IncludeError(
+            "Render-time includes are disabled by render options",
+            ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="IncludeRuntime"),
+        )
+
     resolver = ctx.include_resolver
     if resolver is None and ctx.engine is not None:
         resolver = getattr(ctx.engine, "include_resolver", None)

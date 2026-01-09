@@ -5,7 +5,7 @@ from typing import Any, Optional, Set
 
 from .errors import ErrorContext, TemplateValidationError
 from .expr import ExprPolicy, ExpressionEvaluator
-from .nodes import Expr, TemplateNode, Var
+from .nodes import Expr, TemplateNode, Var, UNSET
 
 
 def collect_variables(template: Any) -> Set[str]:
@@ -16,11 +16,14 @@ def collect_variables(template: Any) -> Set[str]:
         if isinstance(x, Var):
             out.add(x.name)
             # default may contain vars too
-            if x.default is not None:
+            if x.default is not UNSET:
                 walk(x.default)
             return
         if isinstance(x, Expr):
-            # We do not attempt to extract names from expressions here.
+            # We do not attempt to extract names from expressions here, but we
+            # *do* walk the default subtree because it may contain !var nodes.
+            if x.default is not UNSET:
+                walk(x.default)
             return
         if isinstance(x, TemplateNode):
             # generic node: walk its fields conservatively
@@ -64,7 +67,7 @@ def validate_template(
                 raise TemplateValidationError(str(e), ctx=ctx, cause=e)
             x._compiled = compiled
             # Validate default subtree too
-            if x.default is not None:
+            if x.default is not UNSET:
                 walk(x.default, path + ("default",))
             return
 

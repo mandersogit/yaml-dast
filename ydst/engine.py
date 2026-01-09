@@ -6,7 +6,7 @@ from typing import Any, Callable, Dict, IO, Optional, Type, Union
 
 import yaml
 
-from .errors import ErrorContext, IncludeCycleError, TemplateLoadError
+from .errors import ErrorContext, TemplateLoadError
 from .include import IncludeResolver
 from .loader import TemplateLoaderMixin
 from .nodes import SourceMark, UNSET
@@ -189,7 +189,7 @@ class TemplateEngine:
 
         stack = include_stack if include_stack is not None else []
         if res.key in stack:
-            raise IncludeCycleError(
+            raise TemplateLoadError(
                 f"Include cycle detected at '{res.key}'",
                 ctx=ErrorContext(mark=mark, node_type="Include"),
             )

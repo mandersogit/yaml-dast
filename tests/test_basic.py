@@ -296,5 +296,59 @@ b: 1
         self.assertGreaterEqual(e.ctx.mark.column or 0, 1)
 
 
+
+    def test_omit_is_falsy_in_if(self) -> None:
+        eng = TemplateEngine()
+        tmpl = eng.load_template("""
+!if
+  test: !omit
+  then: "YES"
+  else: "NO"
+""")
+        out = eng.render(tmpl)
+        self.assertEqual(out, "NO")
+
+    def test_omit_is_falsy_in_foreach_when(self) -> None:
+        eng = TemplateEngine()
+        tmpl = eng.load_template("""
+!foreach
+  in: [1, 2, 3]
+  template: {v: !var item}
+  when: !omit
+""")
+        out = eng.render(tmpl)
+        self.assertEqual(out, [])
+
+    def test_loader_validates_boolean_fields(self) -> None:
+        eng = TemplateEngine()
+        with self.assertRaises(TemplateLoadError):
+            eng.load_template('!var {name: x, required: "false"}')
+
+        with self.assertRaises(TemplateLoadError):
+            eng.load_template('!include {timing: load, target: 123}')
+
+    def test_foreach_var_must_be_non_empty_string(self) -> None:
+        eng = TemplateEngine()
+        with self.assertRaises(TemplateLoadError):
+            eng.load_template('!foreach {in: [1], var: "", template: {x: 1}}')
+
+    def test_load_time_include_cycle_is_template_load_error(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td)
+            (p / 'a.yaml').write_text('!include b.yaml', encoding='utf-8')
+            (p / 'b.yaml').write_text('!include a.yaml', encoding='utf-8')
+
+            resolver = FileIncludeResolver(search_paths=[p])
+            eng = TemplateEngine(include_resolver=resolver)
+
+            with self.assertRaises(TemplateLoadError):
+                eng.load_template_file(str(p / 'a.yaml'))
+
+    def test_pipe_unknown_stage_strict_errors(self) -> None:
+        eng = TemplateEngine()
+        tmpl = eng.load_template('!pipe [a, unknown]')
+
+        with self.assertRaises(RenderError):
+            eng.render(tmpl, registry=default_registry(), options=RenderOptions(strict_pipe_stages=True))
 if __name__ == "__main__":
     unittest.main()

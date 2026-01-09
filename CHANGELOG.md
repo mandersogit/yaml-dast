@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.1.4 (2026-01-02)
+
+### Correctness
+
+- `!omit` is now falsy, preventing surprising behavior when used in `!if` tests and `!foreach` when clauses.
+- YAML constructors now validate boolean fields (`required`, `strict`, etc.) as booleans instead of coercing truthiness from non-bool values.
+- `!foreach` loader now distinguishes missing keys from explicit `null` values and correctly handles `var:`/`as:` selection even when empty strings are supplied.
+- Load-time `!include` now enforces `target` being a literal non-empty string (templated / non-string targets must use `!include_rt`).
+- Load-time include cycle errors are now reported as `TemplateLoadError` (not a render-time error type).
+- Improved error paths for `!foreach into: dict` by tagging key vs value evaluation in the path.
+
+### API / ergonomics
+
+- Added `mode="locked_down"` (and `mode="expr_safe"` alias) to make expression and execution policy clearer:
+  - `locked_down` disables `!call`, `!include_rt`, registry-driven `!pipe` string stages, and callable pipe stages.
+- Added `RenderOptions.allow_calls`, `allow_includes`, `allow_pipe_registry_calls`, `strict_pipe_stages`, and `materialize_foreach_iterables`.
+- `TemplateLoadError` and `TemplateValidationError` now render contextualized messages via `__str__` (matching `RenderError`).
+- `ydst.api.load_template(..., loader=...)` now emits a deprecation warning; prefer `engine=`.
+- Exported `validate_template` and `collect_variables` from the top-level package.
+
+### Security / hardening
+
+- `FileIncludeResolver` now supports `allow_absolute=False` and `enforce_roots=True` to restrict include targets to an allowlisted directory set.
+- Added registry tiers: `minimal_registry()`, `safe_registry()`, and `extended_registry()` (alias for the existing `default_registry()`).
+
+### CLI
+
+- CLI now supports YAML context via `--context-yaml` / `--context-yaml-file`.
+- Improved CLI error handling and exit codes; `--debug` enables tracebacks.
+- JSON output now handles sets (converted to stable lists) and non-JSON dict keys (stringified).
+
+### Tests
+
+- Added tests covering the above fixes and new options.
+
 ## 0.1.3 (2026-01-02)
 
 ### Correctness

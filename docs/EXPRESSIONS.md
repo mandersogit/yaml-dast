@@ -31,7 +31,7 @@ The validator rejects everything else (including comprehensions, lambdas, import
 Attribute access is controlled by:
 
 - `RenderOptions.allow_attribute_access_in_expr`
-- `RenderOptions.mode` (`safe` disables it)
+- `RenderOptions.mode` (`safe` / `expr_safe` disables it)
 
 Additional safety rules:
 
@@ -43,7 +43,7 @@ Additional safety rules:
 Function calls in expressions are controlled by:
 
 - `RenderOptions.allow_function_calls_in_expr`
-- `RenderOptions.mode` (`safe` disables calls)
+- `RenderOptions.mode` (`safe` / `expr_safe` disables calls)
 
 ydst only permits calling **whitelisted functions** obtained from the provided registry.
 
@@ -64,4 +64,4 @@ Method calls (e.g., `obj.method()`) are disabled by default (`allow_method_calls
 
 - Prefer `!call` for complex logic.
 - Keep expressions short and side-effect free.
-- If you need to evaluate templates from untrusted sources, use `mode="safe"` and avoid providing broad registries or filesystem include resolvers.
+- If you need to evaluate templates from untrusted sources, use `mode="safe"` / `mode="expr_safe"` (or `mode="locked_down"`) and avoid providing broad registries or filesystem include resolvers.

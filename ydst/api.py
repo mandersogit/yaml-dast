@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import warnings
+
 from pathlib import Path
 from typing import Any, IO, Mapping, Optional, Union
 
@@ -40,6 +42,13 @@ def load_template(
 
     if engine is not None and loader is not None:
         raise ValueError("Pass only one of: engine=..., loader=...")
+
+    if loader is not None:
+        warnings.warn(
+            "`loader` is deprecated; use `engine` instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
     eng = engine or loader or TemplateEngine(include_resolver=includes)
     return eng.load_template(source, source_name=source_name)

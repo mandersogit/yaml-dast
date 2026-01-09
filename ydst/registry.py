@@ -182,6 +182,8 @@ def default_registry() -> DictFunctionRegistry:
     """An optional built-in registry for convenience.
 
     This is *not* enabled automatically; callers must opt in.
+
+    If you want fewer capabilities by default, consider `safe_registry()` or `minimal_registry()`.
     """
 
     funcs: Dict[str, Callable[..., Any]] = {
@@ -207,3 +209,63 @@ def default_registry() -> DictFunctionRegistry:
         "abs": abs,
     }
     return DictFunctionRegistry(funcs)
+
+
+# ---------------------------------------------------------------------------
+# Registry "tiers" (optional)
+# ---------------------------------------------------------------------------
+
+
+def minimal_registry() -> DictFunctionRegistry:
+    """A minimal built-in registry containing pure data helpers.
+
+    This registry intentionally excludes environment access and general-purpose builtins.
+    """
+
+    funcs: Dict[str, Callable[..., Any]] = {
+        "get_in": get_in,
+        "coalesce": coalesce,
+        "slugify": slugify,
+        "to_int": to_int,
+        "to_float": to_float,
+    }
+    return DictFunctionRegistry(funcs)
+
+
+def safe_registry() -> DictFunctionRegistry:
+    """A safer-by-default registry.
+
+    Includes the minimal helpers plus a small set of explicit, non-I/O builtins.
+    """
+
+    funcs: Dict[str, Callable[..., Any]] = {
+        # pure helpers
+        "get_in": get_in,
+        "coalesce": coalesce,
+        "slugify": slugify,
+        "to_int": to_int,
+        "to_float": to_float,
+        # common safe builtins (explicitly listed)
+        "len": len,
+        "min": min,
+        "max": max,
+        "sum": sum,
+        "sorted": sorted,
+        "str": str,
+        "int": int,
+        "float": float,
+        "bool": bool,
+        "round": round,
+        "abs": abs,
+    }
+    return DictFunctionRegistry(funcs)
+
+
+def extended_registry() -> DictFunctionRegistry:
+    """An extended registry.
+
+    Currently this is an alias for `default_registry()` and is provided for clarity
+    when choosing a registry tier.
+    """
+
+    return default_registry()

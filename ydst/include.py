@@ -33,13 +33,25 @@ class IncludeResolver(Protocol):
 
 
 class FileIncludeResolver:
-    """A simple filesystem include resolver.
+    """Filesystem include resolver.
 
-    - If `target` is an absolute path, it is used as-is.
+    Resolution algorithm
+    -------------------
+    - If `target` is absolute, it is used as-is.
     - If `target` is relative and `from_source` is a filesystem path, resolve relative to its directory.
     - Otherwise, search `search_paths` in order.
 
-    Security note: this is not a sandbox; treat templates as trusted.
+    Optional hardening
+    ------------------
+    `allow_absolute=False` disallows absolute include targets.
+
+    `enforce_roots=True` requires the resolved path to be under one of the configured roots.
+    This can help prevent ".." traversal and symlink escapes.
+
+    Notes
+    -----
+    - This is still not a security sandbox.
+    - Missing targets return `IncludeResult(content=None, ...)`.
     """
 
     def __init__(
@@ -49,16 +61,49 @@ class FileIncludeResolver:
         encoding: str = "utf-8",
         cache: bool = False,
         cache_max: Optional[int] = None,
+        allow_absolute: bool = True,
+        enforce_roots: bool = False,
+        roots: Optional[Sequence[str | Path]] = None,
     ):
         self.search_paths = [Path(p) for p in (search_paths or [])]
         self.encoding = encoding
 
+        self.allow_absolute = allow_absolute
+        self.enforce_roots = enforce_roots
+
+        # If roots are not provided, default to search_paths.
+        roots_seq = list(roots) if roots is not None else list(self.search_paths)
+        self.roots = [Path(p).resolve() for p in roots_seq]
+
+        if self.enforce_roots and not self.roots:
+            raise ValueError("enforce_roots=True requires at least one root (pass roots=... or search_paths=...)")
+
         # Optional in-resolver caching. This caches both hits and misses.
-        #
         # Note: this is an LRU-ish cache using insertion order.
         self.cache = cache
         self.cache_max = cache_max
         self._cache: "OrderedDict[tuple[str, str | None], IncludeResult]" = OrderedDict()
+
+    def _check_roots(self, resolved_path: Path) -> None:
+        if not self.enforce_roots:
+            return
+
+        for root in self.roots:
+            try:
+                if resolved_path.is_relative_to(root):
+                    return
+            except Exception:
+                # Older/edge Path implementations; fall back to string prefix.
+                try:
+                    rp = str(resolved_path)
+                    rr = str(root)
+                    if rp.startswith(rr.rstrip("/") + "/") or rp == rr:
+                        return
+                except Exception:
+                    pass
+
+        roots_str = ", ".join(str(r) for r in self.roots)
+        raise ValueError(f"Resolved include path is outside allowed roots: {resolved_path} (roots: {roots_str})")
 
     def resolve(self, target: str, *, from_source: Optional[str] = None) -> IncludeResult:
         cache_key = (target, from_source)
@@ -74,13 +119,15 @@ class FileIncludeResolver:
 
         candidates: list[Path] = []
         if t.is_absolute():
+            if not self.allow_absolute:
+                raise ValueError(f"Absolute include targets are disallowed: {target!r}")
             candidates.append(t)
         else:
             if from_source:
                 try:
                     fs = Path(from_source)
                     # Heuristic: treat it as path-like if it exists or looks like a filename.
-                    if fs.exists() or fs.suffix:
+                    if fs.is_absolute() or fs.exists() or len(fs.parts) > 1:
                         candidates.append(fs.parent / t)
                 except Exception:
                     pass
@@ -94,6 +141,8 @@ class FileIncludeResolver:
                 p = cand
 
             if p.exists() and p.is_file():
+                # Optional hardening.
+                self._check_roots(p)
                 content = p.read_text(encoding=self.encoding)
                 res = IncludeResult(content=content, source_name=str(p), key=str(p))
                 if self.cache:

@@ -34,11 +34,23 @@ resolver = FileIncludeResolver(search_paths=[".", "./configs"])
 cached_resolver = FileIncludeResolver(search_paths=[".", "./configs"], cache=True, cache_max=256)
 ```
 
+Hardening options (useful if include targets are partially user-controlled):
+
+```python
+# Disallow absolute paths and require includes to resolve within the provided search_paths
+resolver = FileIncludeResolver(
+    search_paths=[".", "./configs"],
+    allow_absolute=False,
+    enforce_roots=True,
+)
+```
+
 Resolution rules:
 
-- absolute paths are used as-is
+- absolute paths are used as-is (unless `allow_absolute=False`)
 - relative paths are resolved relative to the including file when possible
 - otherwise, `search_paths` are searched in order
+- when `enforce_roots=True`, resolved includes must be within the configured roots (by default, the `search_paths`)
 
 ## Load-time include (`!include`)
 

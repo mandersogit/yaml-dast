@@ -84,7 +84,7 @@ Rendering behavior is controlled by `ydst.render.RenderOptions`.
 from ydst.render import RenderOptions
 
 options = RenderOptions(
-    mode="trusted",         # "trusted" (default) or "safe"
+    mode="trusted",         # "trusted" (default), "safe"/"expr_safe", or "locked_down"
     strict=True,            # missing vars error; root !omit error
     dict_key_conflict="auto",
     wrap_exceptions=True,   # wrap errors into ydst exceptions with cause preserved
@@ -100,8 +100,9 @@ Key fields:
   - if `False`, missing variables become `None` (or a node-specific default), and root `!omit` is allowed.
 - `mode`
   - `"trusted"` (default): expression attribute access and expression function calls are enabled (subject to other flags).
-  - `"safe"`: expression attribute access and expression function calls are disabled (see `EXPRESSIONS.md`).
-    Note: this only affects `!expr`; it does not disable `!call` / `!pipe` or includes.
+  - `"safe"` / `"expr_safe"`: disables expression attribute access and expression function calls (see `EXPRESSIONS.md`).
+    Note: this only affects `!expr`; use the explicit policy toggles below to control `!call`, `!include_rt`, and `!pipe`.
+  - `"locked_down"`: a more restrictive preset that disables `!call`, `!include_rt`, and registry-based string stages in `!pipe`, and applies the same expression restrictions as `"safe"`.
 - `dict_key_conflict`
   - `"auto"`: strict→error, non-strict→last-wins
   - `"error"`: always error on duplicates
@@ -110,6 +111,14 @@ Key fields:
   - if `False`, raw exceptions from registry functions propagate (useful for debugging)
 - `max_depth` / `max_nodes`
   - `max_nodes` is useful for bounding total work in templates with large loops.
+
+Additional policy toggles:
+
+- `allow_calls` (default: `True`)
+- `allow_includes` (default: `True`)
+- `allow_pipe_registry_calls` (default: `True`)
+- `strict_pipe_stages` (default: `False`)
+- `materialize_foreach_iterables` (default: `True`)
 
 ### Expression flags
 

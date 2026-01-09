@@ -27,7 +27,9 @@ class TemplateNode:
 class Omit(TemplateNode):
     """A sentinel node that removes a key or list item from the rendered output."""
 
-    pass
+    def __bool__(self) -> bool:  # pragma: no cover
+        # Treat OMIT as falsy so it behaves naturally in conditionals (e.g. !if, !foreach when).
+        return False
 
 
 # Public singleton sentinel used by the renderer.

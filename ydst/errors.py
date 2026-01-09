@@ -55,6 +55,15 @@ class TemplateLoadError(YdstError):
         if cause is not None:
             self.__cause__ = cause
 
+    def pretty(self) -> str:
+        p = format_path(self.ctx.path)
+        m = format_mark(self.ctx.mark)
+        n = self.ctx.node_type or "<node>"
+        return f"{self.__class__.__name__}: {self.args[0]} (path={p}, node={n}, at={m})"
+
+    def __str__(self) -> str:
+        return self.pretty()
+
 
 class TemplateValidationError(YdstError):
     def __init__(self, message: str, *, ctx: Optional[ErrorContext] = None, cause: Exception | None = None):
@@ -62,6 +71,15 @@ class TemplateValidationError(YdstError):
         self.ctx = ctx or ErrorContext()
         if cause is not None:
             self.__cause__ = cause
+
+    def pretty(self) -> str:
+        p = format_path(self.ctx.path)
+        m = format_mark(self.ctx.mark)
+        n = self.ctx.node_type or "<node>"
+        return f"{self.__class__.__name__}: {self.args[0]} (path={p}, node={n}, at={m})"
+
+    def __str__(self) -> str:
+        return self.pretty()
 
 
 class RenderError(YdstError):
