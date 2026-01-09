@@ -38,40 +38,56 @@ Enable them via `RenderOptions(allow_python=True)` or CLI flags when you control
 ## Quick start
 
 ```python
-from ydst import TemplateEngine, FileIncludeResolver, default_registry
+import ydst
 
-engine = TemplateEngine(
-    include_resolver=FileIncludeResolver(search_paths=["."]),
+# Load a template
+tmpl = ydst.Template.from_path("config.yaml")
+
+# Render with context
+result = tmpl.render(context={"env": "production", "debug": False})
+
+# Templates are reusable
+dev = tmpl.render(context={"env": "development", "debug": True})
+prod = tmpl.render(context={"env": "production", "debug": False})
+```
+
+For inline YAML:
+
+```python
+tmpl = ydst.Template.from_text("""
+database:
+  host: !var db_host
+  port: !default [!var db_port, 5432]
+""")
+result = tmpl.render(context={"db_host": "localhost"})
+# → {"database": {"host": "localhost", "port": 5432}}
+```
+
+### Custom engine (advanced)
+
+For includes, custom options, or custom function registries:
+
+```python
+import ydst
+
+engine = ydst.TemplateEngine(
+    include_resolver=ydst.FileIncludeResolver(search_paths=["./templates"]),
 )
 
-tmpl = engine.load_template_text(
-    """
-model: gpt-5
-params:
-  temperature: !var temperature
-tools: !foreach
-  var: t
-  in: !var enabled_tools
-  template:
-    name: !expr "t"
-""",
-    source_name="inline.yaml",
-)
-
-out = engine.render(
-    tmpl,
-    context={"temperature": 0.2, "enabled_tools": ["search", "calc"]},
-    registry=default_registry(),
-)
-
-print(out)
+tmpl = engine.load_template_path("config.yaml")
+result = tmpl.render(context={"env": "production"})
 ```
 
 ## Loading templates
 
-- Use `load_template_file(path)` / `TemplateEngine.load_template_file(path)` for filesystem files.
-- Use `load_template_text(text)` / `TemplateEngine.load_template_text(text)` for YAML text.
-- `load_template(source)` / `TemplateEngine.load_template(source)` treats a `str` as a **filesystem path**.
+- `Template.from_text(yaml_string)` — load from a string
+- `Template.from_path(path)` — load from a filesystem path
+- `Template.from_stream(io_object)` — load from a file handle or StringIO
+
+Or use the engine directly:
+- `engine.load_template_text(text)` — returns `Template`
+- `engine.load_template_path(path)` — returns `Template`
+- `engine.load_yaml_text(text)` — returns raw node tree (for introspection)
 
 ## CLI
 
@@ -113,5 +129,5 @@ ydst deps template.yaml
 - This library is **not** a sandbox for untrusted code; expression evaluation is restricted, but treat templates as trusted.
   If you need additional defense-in-depth, consider:
   - `RenderOptions(mode="locked_down")`
-  - a reduced registry tier (e.g. `safe_registry()` / `minimal_registry()`), or no registry
+  - a reduced registry tier (e.g. `ydst.safe_registry()` or `ydst.registry.minimal_registry()`), or no registry
   - `FileIncludeResolver(..., allow_absolute=False, enforce_roots=True)`
