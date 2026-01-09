@@ -26,6 +26,28 @@ ydst's `RenderOptions` includes both a coarse-grained `mode` and several explici
 - `mode="locked_down"`
   - disables `!call`, runtime includes (`!include_rt`), and pipe registry calls
   - also applies the `expr_safe` expression restrictions and disables callable pipe stages
+  - disables `!python` and `!python_module`
+  - note: `!setdefault` is **not** disabled (it's safe)
+
+### Mode precedence
+
+When `mode=` is set, it acts as an authoritative preset that overrides individual options:
+
+```python
+# The mode wins — allow_python will be False after normalization
+opts = RenderOptions(mode="locked_down", allow_python=True)
+```
+
+If you need custom combinations, don't use a mode — set individual options directly:
+
+```python
+# Custom combination: locked-down expression safety but allow calls
+opts = RenderOptions(
+    allow_attribute_access_in_expr=False,
+    allow_function_calls_in_expr=False,
+    allow_calls=True,  # But still allow !call
+)
+```
 
 If you need more precise control than `mode`, you can also set:
 

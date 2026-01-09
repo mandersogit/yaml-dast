@@ -286,26 +286,26 @@ Define default values into the render-time local scope.
 This tag is useful when you want to compute a default once and then refer to it later with `!var`.
 If a name is already present in the render scope, it is left unchanged.
 
-**This tag is disabled by default.** Enable it with `RenderOptions(allow_setdefault=True)` (or the CLI flag
-`--allow-setdefault`).
+**This tag is enabled by default** because it is safe — it cannot override caller-provided context values.
 
 Example:
 
 ```yaml
 app:
   # Provide defaults only if not set by the caller
-  - !setdefault
-      env: prod
-      region: us-east-1
+  setup: !setdefault
+    env: prod
+    region: us-east-1
 
-  - env: !var env
-    region: !var region
+  env: !var env
+  region: !var region
 ```
 
 Notes:
 - `!setdefault` returns `!omit`, so it doesn't appear in list/dict output.
 - Defaults are rendered (so they may contain templating tags themselves).
-- `mode="locked_down"` disables `!setdefault` regardless of `allow_setdefault`.
+- Caller-provided values always take precedence over `!setdefault` values.
+- This tag works even in `mode="locked_down"` (unlike `!python`/`!python_module`).
 
 ## !python
 
@@ -331,6 +331,22 @@ Example (implicit emit of the trailing expression):
 ```yaml
 answer: !python |
   40 + 2
+```
+
+### Implicit emit limitations
+
+Only a trailing expression **at the top level** triggers implicit emit. Expressions inside control flow do NOT:
+
+```yaml
+# This returns None, not 42 — the expression is inside `if`, not at top level
+x: !python |
+  if True:
+      42
+
+# Correct:
+x: !python |
+  if True:
+      emit(42)
 ```
 
 Strict emit:
@@ -366,3 +382,40 @@ Notes:
 - Functions defined in `!python_module` are available to `!call` and `!pipe` registry lookups and to `!expr`
   function calls (in modes where `!expr` function calls are enabled).
 - `mode="locked_down"` disables `!python_module` regardless of `allow_python_module`.
+
+### Stateful patterns with `!python` and `!python_module`
+
+These tags work together to enable stateful patterns not possible with declarative tags alone:
+
+**Accumulator pattern** (uses both tags):
+
+```yaml
+setup: !python_module |
+    total = 0
+
+items: !foreach
+  var: price
+  in: !var prices
+  template: !python |
+      global total
+      total += price
+      emit({"price": price, "running_total": total})
+```
+
+**Counter/ID generation** (uses `!python_module` + `!expr`):
+
+```yaml
+setup: !python_module |
+    _counter = 0
+    def next_id():
+        global _counter
+        _counter += 1
+        return f"item-{_counter}"
+
+items: !foreach
+  var: x
+  in: !var data
+  template:
+    id: !expr "next_id()"
+    value: !expr "x"
+```

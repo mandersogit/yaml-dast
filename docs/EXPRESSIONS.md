@@ -37,7 +37,8 @@ Additional safety rules:
 
 - By default, attributes starting with `_` or containing `__` are rejected.
 - You can override this with `RenderOptions(allow_private_attributes_in_expr=True)`.
-- For mapping-like objects, `x.key` will return `x["key"]` if that key exists (convenience for dict-backed context).
+
+Note: Use subscript syntax (`x["key"]`) for dict access; attribute syntax (`x.key`) only works for actual object attributes.
 
 ## Function calls
 
