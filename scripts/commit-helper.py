@@ -1,5 +1,16 @@
-#!/usr/bin/env python3
-
+#!/bin/bash
+# -*- mode: python -*-
+# vim: set ft=python:
+# Polyglot bash/python script - bash delegates to venv python, falls back to system
+"true" '''\'
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+if [ -x "$PROJECT_ROOT/local.venv/bin/python" ]; then
+    exec "$PROJECT_ROOT/local.venv/bin/python" "$0" "$@"
+else
+    exec /usr/bin/env python3 "$0" "$@"
+fi
+'''
 """
 Commit helper for yaml-dast project.
 
