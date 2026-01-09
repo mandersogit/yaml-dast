@@ -16,7 +16,7 @@ class IncludeResolver(Protocol):
 
 The resolver returns:
 
-- `content`: YAML text (empty means "not found")
+- `content`: YAML text (`None` means "not found"; empty string is a valid empty file)
 - `source_name`: a human-readable name (usually a file path)
 - `key`: a stable identity used for cycle detection
 

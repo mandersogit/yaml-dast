@@ -2,8 +2,16 @@ import unittest
 from pathlib import Path
 import tempfile
 
-from ydst import TemplateEngine, FileIncludeResolver, default_registry, OMIT
+from ydst import (
+    TemplateEngine,
+    FileIncludeResolver,
+    default_registry,
+    OMIT,
+    RenderError,
+    ExpressionError,
+)
 from ydst.render import RenderOptions
+from ydst.registry import chain_registries
 
 
 class TestYdstBasic(unittest.TestCase):
@@ -114,6 +122,122 @@ m: !foreach
         # strict with error
         with self.assertRaises(Exception):
             eng.render(tmpl, registry=default_registry(), options=RenderOptions(dict_key_conflict="error"))
+
+    def test_expr_calls_with_chained_registry(self):
+        eng = TemplateEngine()
+        tmpl = eng.load_template("n: !expr \"len(xs)\"\n")
+
+        extra = default_registry()
+        extra.functions = {"noop": lambda x: x}
+
+        reg = chain_registries(extra, default_registry())
+        out = eng.render(tmpl, context={"xs": [1, 2, 3]}, registry=reg)
+        self.assertEqual(out["n"], 3)
+
+    def test_expr_calls_with_get_only_registry(self):
+        class _GetOnly:
+            def __init__(self, funcs):
+                self._funcs = dict(funcs)
+
+            def get(self, name: str):
+                return self._funcs.get(name)
+
+        eng = TemplateEngine()
+        tmpl = eng.load_template("n: !expr \"len(xs)\"\n")
+        reg = _GetOnly({"len": len})
+        out = eng.render(tmpl, context={"xs": [1, 2, 3]}, registry=reg)
+        self.assertEqual(out["n"], 3)
+
+    def test_expr_dict_unpacking_rejected(self):
+        eng = TemplateEngine()
+        tmpl = eng.load_template("x: !expr \"{**d}\"\n")
+        with self.assertRaises(ExpressionError):
+            eng.render(tmpl, context={"d": {"a": 1}}, registry=default_registry())
+
+    def test_expr_private_attributes_rejected(self):
+        eng = TemplateEngine()
+        tmpl = eng.load_template("x: !expr \"obj.__class__\"\n")
+        with self.assertRaises(ExpressionError):
+            eng.render(tmpl, context={"obj": object()}, registry=default_registry())
+
+    def test_safe_mode_disables_expr_calls(self):
+        eng = TemplateEngine()
+        tmpl = eng.load_template("n: !expr \"len(xs)\"\n")
+        with self.assertRaises(ExpressionError):
+            eng.render(
+                tmpl,
+                context={"xs": [1, 2, 3]},
+                registry=default_registry(),
+                options=RenderOptions(mode="safe"),
+            )
+
+    def test_max_depth_applies_to_containers(self):
+        eng = TemplateEngine()
+        tmpl = eng.load_template("""
+a:
+  b:
+    c:
+      d: 1
+""")
+        with self.assertRaises(RenderError):
+            eng.render(tmpl, options=RenderOptions(max_depth=3))
+
+    def test_default_omit_for_var_expr_include_rt(self):
+        eng = TemplateEngine()
+
+        tmpl_var = eng.load_template("""
+a: !var
+  name: missing
+  required: false
+  default: !omit
+b: 1
+""")
+        out_var = eng.render(tmpl_var, registry=default_registry())
+        self.assertEqual(out_var, {"b": 1})
+
+        tmpl_expr = eng.load_template("""
+a: !expr
+  expr: missing_name
+  strict: false
+  default: !omit
+b: 1
+""")
+        out_expr = eng.render(tmpl_expr, registry=default_registry())
+        self.assertEqual(out_expr, {"b": 1})
+
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            eng2 = TemplateEngine(include_resolver=FileIncludeResolver(search_paths=[td]))
+            tmpl_inc = eng2.load_template("""
+a: !include_rt
+  target: missing.yaml
+  required: false
+  default: !omit
+b: 1
+""")
+            out_inc = eng2.render(tmpl_inc, registry=default_registry())
+            self.assertEqual(out_inc, {"b": 1})
+
+    def test_empty_include_file_is_not_missing(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            (td / "empty.yaml").write_text("", encoding="utf-8")
+            (td / "main.yaml").write_text("x: !include empty.yaml\n", encoding="utf-8")
+
+            (td / "rt.yaml").write_text("x: !include_rt empty.yaml\n", encoding="utf-8")
+
+            eng = TemplateEngine(include_resolver=FileIncludeResolver(search_paths=[td]))
+            tmpl = eng.load_template_file(td / "main.yaml")
+            out = eng.render(tmpl)
+            self.assertEqual(out, {"x": None})
+
+            tmpl_rt = eng.load_template_file(td / "rt.yaml")
+            out_rt = eng.render(tmpl_rt)
+            self.assertEqual(out_rt, {"x": None})
+
+            tmpl_rt = eng.load_template("x: !include_rt empty.yaml\n")
+            out_rt = eng.render(tmpl_rt)
+            self.assertEqual(out_rt, {"x": None})
 
 
 if __name__ == "__main__":

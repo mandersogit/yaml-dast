@@ -3,14 +3,22 @@ from __future__ import annotations
 import ast
 import operator
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Mapping, Optional
+from typing import Any, Callable, Mapping, Optional
 
 from .errors import ErrorContext, TemplateValidationError
-from .nodes import SourceMark
 
 
 @dataclass(frozen=True)
 class ExprPolicy:
+    """Policy controls for the restricted expression evaluator.
+
+    Notes
+    -----
+    This evaluator is intended for convenience and predictability, not as a
+    security sandbox. "Safe mode" in ydst only restricts certain syntactic
+    constructs (notably function calls and attribute access) inside `!expr`.
+    """
+
     allow_attribute_access: bool = True
     allow_function_calls: bool = True
     allow_subscripts: bool = True
@@ -57,9 +65,14 @@ class _ExprValidator(ast.NodeVisitor):
             self.visit(e)
 
     def visit_Dict(self, node: ast.Dict) -> Any:
+        # Dict unpacking (**mapping) appears as a Dict with a `None` key.
+        # We do not support this because it's easy to get subtly wrong.
+        if any(k is None for k in node.keys):
+            raise TemplateValidationError("Dict unpacking (**mapping) is not allowed", ctx=self.ctx)
+
         for k in node.keys:
-            if k is not None:
-                self.visit(k)
+            # k is never None here
+            self.visit(k)  # type: ignore[arg-type]
         for v in node.values:
             self.visit(v)
 
@@ -95,7 +108,8 @@ class _ExprValidator(ast.NodeVisitor):
     def visit_Compare(self, node: ast.Compare) -> Any:
         for op in node.ops:
             if not isinstance(
-                op, (ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE, ast.In, ast.NotIn, ast.Is, ast.IsNot)
+                op,
+                (ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE, ast.In, ast.NotIn, ast.Is, ast.IsNot),
             ):
                 raise TemplateValidationError(f"Disallowed comparison operator: {op.__class__.__name__}", ctx=self.ctx)
         self.visit(node.left)
@@ -126,6 +140,9 @@ class _ExprValidator(ast.NodeVisitor):
     def visit_Attribute(self, node: ast.Attribute) -> Any:
         if not self.policy.allow_attribute_access:
             raise TemplateValidationError("Attribute access is disabled by policy", ctx=self.ctx)
+        if not self.policy.allow_private_attributes:
+            if node.attr.startswith("_") or "__" in node.attr:
+                raise TemplateValidationError("Private/dunder attributes are not allowed", ctx=self.ctx)
         self.visit(node.value)
 
     # Function calls
@@ -137,7 +154,10 @@ class _ExprValidator(ast.NodeVisitor):
         if isinstance(node.func, ast.Attribute) and not self.policy.allow_method_calls:
             raise TemplateValidationError("Method calls are disabled by policy", ctx=self.ctx)
         if not isinstance(node.func, (ast.Name, ast.Attribute)):
-            raise TemplateValidationError("Only direct function names (and optionally methods) may be called", ctx=self.ctx)
+            raise TemplateValidationError(
+                "Only direct function names (and optionally methods) may be called",
+                ctx=self.ctx,
+            )
 
         self.visit(node.func)
         for a in node.args:
@@ -181,8 +201,19 @@ _CMP: dict[type, Callable[[Any, Any], bool]] = {
 class ExpressionEvaluator:
     """Restricted AST-based expression evaluator.
 
-    This is designed for convenience and predictability, not as a sandbox.
+    This is designed for convenience and predictability, **not** as a sandbox.
     Treat templates and their expressions as trusted inputs.
+
+    The evaluator supports an optional function whitelist mechanism:
+
+    - `allowed_functions`: explicit mapping from allowed function names to callables.
+    - `function_resolver`: callable `(name) -> callable|None` used when
+      `allowed_functions` is not provided.
+
+    Importantly, function call resolution is *not* based on variable lookup in `env`.
+    This avoids accidentally allowing arbitrary callables that appear in the render
+    context, and avoids overwriting user variables by injecting registry functions into
+    the evaluation environment.
     """
 
     def __init__(
@@ -190,9 +221,11 @@ class ExpressionEvaluator:
         *,
         policy: Optional[ExprPolicy] = None,
         allowed_functions: Optional[Mapping[str, Callable[..., Any]]] = None,
+        function_resolver: Optional[Callable[[str], Optional[Callable[..., Any]]]] = None,
     ):
         self.policy = policy or ExprPolicy()
         self.allowed_functions = dict(allowed_functions or {})
+        self.function_resolver = function_resolver
 
     def compile(self, expr: str, *, ctx: Optional[ErrorContext] = None) -> ast.Expression:
         ctx = ctx or ErrorContext()
@@ -206,6 +239,19 @@ class ExpressionEvaluator:
 
     def eval(self, compiled: ast.Expression, env: Mapping[str, Any]) -> Any:
         return self._eval_node(compiled.body, env)
+
+    def _resolve_function(self, name: str) -> Optional[Callable[..., Any]]:
+        if name in self.allowed_functions:
+            return self.allowed_functions[name]
+        if self.function_resolver is not None:
+            try:
+                fn = self.function_resolver(name)
+            except Exception:
+                # Resolver errors are not swallowed: propagate.
+                raise
+            if fn is not None and callable(fn):
+                return fn
+        return None
 
     def _eval_node(self, node: ast.AST, env: Mapping[str, Any]) -> Any:
         if isinstance(node, ast.Constant):
@@ -221,8 +267,10 @@ class ExpressionEvaluator:
         if isinstance(node, ast.Set):
             return {self._eval_node(e, env) for e in node.elts}
         if isinstance(node, ast.Dict):
+            if any(k is None for k in node.keys):
+                raise ValueError("Dict unpacking (**mapping) is not supported")
             return {
-                self._eval_node(k, env) if k is not None else None: self._eval_node(v, env)
+                self._eval_node(k, env): self._eval_node(v, env)
                 for k, v in zip(node.keys, node.values)
             }
         if isinstance(node, ast.UnaryOp):
@@ -233,17 +281,19 @@ class ExpressionEvaluator:
             return op(self._eval_node(node.left, env), self._eval_node(node.right, env))
         if isinstance(node, ast.BoolOp):
             if isinstance(node.op, ast.And):
+                val: Any = False
                 for v in node.values:
                     val = self._eval_node(v, env)
                     if not val:
                         return val
-                return val  # type: ignore[has-type]
+                return val
             if isinstance(node.op, ast.Or):
+                val: Any = False
                 for v in node.values:
                     val = self._eval_node(v, env)
                     if val:
                         return val
-                return val  # type: ignore[has-type]
+                return val
         if isinstance(node, ast.Compare):
             left = self._eval_node(node.left, env)
             for op, comp in zip(node.ops, node.comparators):
@@ -270,6 +320,7 @@ class ExpressionEvaluator:
             if not self.policy.allow_private_attributes:
                 if attr.startswith("_") or "__" in attr:
                     raise AttributeError(attr)
+
             # Mapping convenience: allow x.key for dict-like objects
             try:
                 from collections.abc import Mapping as _Mapping
@@ -283,26 +334,29 @@ class ExpressionEvaluator:
             if not self.policy.allow_function_calls:
                 raise ValueError("Function calls disabled by policy")
 
-            if isinstance(node.func, ast.Attribute) and not self.policy.allow_method_calls:
-                raise ValueError("Method calls disabled by policy")
-
-            func = self._eval_node(node.func, env)
-            # Policy: only allow calling functions that are explicitly whitelisted by name,
-            # unless the caller provided callables directly in env and opted into that behavior.
-            # We check by identity membership in allowed_functions when possible.
+            # Direct name calls (whitelisted)
             if isinstance(node.func, ast.Name):
                 name = node.func.id
-                if name not in self.allowed_functions:
+                fn = self._resolve_function(name)
+                if fn is None:
                     raise PermissionError(f"Function '{name}' is not allowed")
-            else:
-                # Attribute-based calls are only allowed if allow_method_calls is true.
-                # There is no stable name, so we cannot whitelist; treat as forbidden unless explicitly enabled.
+
+                args = [self._eval_node(a, env) for a in node.args]
+                kwargs = {kw.arg: self._eval_node(kw.value, env) for kw in node.keywords if kw.arg is not None}
+                return fn(*args, **kwargs)
+
+            # Method calls (explicitly gated)
+            if isinstance(node.func, ast.Attribute):
                 if not self.policy.allow_method_calls:
                     raise PermissionError("Method calls are not allowed")
+                fn = self._eval_node(node.func, env)
+                if not callable(fn):
+                    raise TypeError(f"Attribute is not callable: {node.func.attr}")
+                args = [self._eval_node(a, env) for a in node.args]
+                kwargs = {kw.arg: self._eval_node(kw.value, env) for kw in node.keywords if kw.arg is not None}
+                return fn(*args, **kwargs)
 
-            args = [self._eval_node(a, env) for a in node.args]
-            kwargs = {kw.arg: self._eval_node(kw.value, env) for kw in node.keywords if kw.arg is not None}
-            return func(*args, **kwargs)
+            raise ValueError("Unsupported call form")
 
         raise ValueError(f"Unsupported expression node: {node.__class__.__name__}")
 

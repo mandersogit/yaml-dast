@@ -77,6 +77,10 @@ class RenderError(YdstError):
         n = self.ctx.node_type or "<node>"
         return f"{self.__class__.__name__}: {self.args[0]} (path={p}, node={n}, at={m})"
 
+    def __str__(self) -> str:
+        # Prefer the contextualized form; keep the raw message in `.args[0]`.
+        return self.pretty()
+
 
 class MissingVariableError(RenderError):
     pass

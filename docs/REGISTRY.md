@@ -11,9 +11,8 @@ class FunctionRegistry(Protocol):
     def get(self, name: str) -> Callable[..., Any] | None: ...
 ```
 
-For expression call support, ydst also looks for an optional `keys()` iterator to build an allowlist of callable names.
-
-The built-in `DictFunctionRegistry` supports both.
+An optional `keys()` method may be provided for introspection/tooling, but it is not required.
+Expression calls resolve functions via `registry.get(name)` and therefore work with any object implementing the `FunctionRegistry` protocol.
 
 ## `default_registry()`
 

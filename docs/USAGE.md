@@ -99,8 +99,9 @@ Key fields:
   - if `True`, missing required variables raise, and root-level `!omit` raises.
   - if `False`, missing variables become `None` (or a node-specific default), and root `!omit` is allowed.
 - `mode`
-  - `"trusted"` (default): expression attribute access and registry calls are allowed (subject to other flags).
-  - `"safe"`: expression attribute access and function calls are disabled (see `EXPRESSIONS.md`).
+  - `"trusted"` (default): expression attribute access and expression function calls are enabled (subject to other flags).
+  - `"safe"`: expression attribute access and expression function calls are disabled (see `EXPRESSIONS.md`).
+    Note: this only affects `!expr`; it does not disable `!call` / `!pipe` or includes.
 - `dict_key_conflict`
   - `"auto"`: strict→error, non-strict→last-wins
   - `"error"`: always error on duplicates

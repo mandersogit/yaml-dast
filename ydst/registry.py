@@ -10,6 +10,14 @@ from .nodes import OMIT, Omit
 
 
 class FunctionRegistry(Protocol):
+    """Protocol for resolving function names.
+
+    The core contract is intentionally small: only `.get(name)` is required.
+
+    Some registry implementations also provide an optional `.keys()` for
+    introspection. ydst does not rely on `.keys()` for correctness.
+    """
+
     def get(self, name: str) -> Optional[Callable[..., Any]]: ...
 
 
@@ -25,7 +33,13 @@ class DictFunctionRegistry(FunctionRegistry):
 
 
 def chain_registries(*registries: FunctionRegistry) -> FunctionRegistry:
-    """Return a registry that resolves names from the first registry that contains them."""
+    """Return a registry that resolves names from the first registry that contains them.
+
+    The chained registry only requires that each input registry implements `.get(name)`.
+
+    If one or more underlying registries provide a `.keys()` method, the chained registry
+    exposes a `.keys()` generator that yields the union of those keys.
+    """
 
     class _Chained(FunctionRegistry):
         def get(self, name: str) -> Optional[Callable[..., Any]]:
@@ -34,6 +48,20 @@ def chain_registries(*registries: FunctionRegistry) -> FunctionRegistry:
                 if fn is not None:
                     return fn
             return None
+
+        def keys(self) -> Iterable[str]:  # pragma: no cover (optional API)
+            seen: set[str] = set()
+            for r in registries:
+                keys = getattr(r, "keys", None)
+                if callable(keys):
+                    try:
+                        for k in keys():
+                            if k not in seen:
+                                seen.add(k)
+                                yield k
+                    except Exception:
+                        # Do not allow a misbehaving registry to break callers.
+                        continue
 
     return _Chained()
 
@@ -45,7 +73,7 @@ def _parse_path(path: Any) -> list[Any]:
         # dot-separated path; allow escaping dots with backslash
         # e.g. "a.b" -> ["a","b"], "a\.b.c" -> ["a.b","c"]
         parts: list[str] = []
-        cur = []
+        cur: list[str] = []
         esc = False
         for ch in path:
             if esc:
@@ -70,12 +98,16 @@ def get_in(obj: Any, path: Any, default: Any = None) -> Any:
 
     `path` may be:
       - list/tuple of keys/indices
-      - dot-separated string path (\-escaped dots supported)
+      - dot-separated string path (\\-escaped dots supported)
 
-    For mappings: uses key lookup.
-    For sequences: uses integer indices when possible.
-    For objects: uses getattr fallback.
+    Resolution order for each step:
+      1) mapping key lookup
+      2) sequence integer index
+      3) attribute lookup
+
+    This helper is convenience-oriented; it returns `default` on failures.
     """
+
     cur = obj
     for key in _parse_path(path):
         if cur is None:
@@ -103,6 +135,7 @@ def get_in(obj: Any, path: Any, default: Any = None) -> Any:
 
 def coalesce(*values: Any, default: Any = None) -> Any:
     """Return the first value that is neither OMIT nor None; else `default`."""
+
     for v in values:
         if v is OMIT or isinstance(v, Omit):
             continue
@@ -150,6 +183,7 @@ def default_registry() -> DictFunctionRegistry:
 
     This is *not* enabled automatically; callers must opt in.
     """
+
     funcs: Dict[str, Callable[..., Any]] = {
         # basic helpers
         "get_in": get_in,

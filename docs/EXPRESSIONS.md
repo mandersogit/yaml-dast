@@ -20,6 +20,10 @@ The expression validator allows:
 - attribute access: `obj.attr` (configurable)
 - function calls: `fn(x)` (configurable; whitelisted)
 
+Notes:
+
+- Dict unpacking (`{**d}`) is **not** supported.
+
 The validator rejects everything else (including comprehensions, lambdas, imports, assignments, and statement-level constructs).
 
 ## Attribute access
@@ -41,11 +45,11 @@ Function calls in expressions are controlled by:
 - `RenderOptions.allow_function_calls_in_expr`
 - `RenderOptions.mode` (`safe` disables calls)
 
-ydst only permits calling **whitelisted functions** derived from the provided registry.
+ydst only permits calling **whitelisted functions** obtained from the provided registry.
 
-**Important implementation detail:** the renderer can only whitelist functions if the registry supports `keys()` iteration (e.g., `DictFunctionRegistry`). If your registry only implements `get(name)` and not `keys()`, expression calls will not be enabled.
+Function calls are resolved by name via `registry.get(name)`. The registry does not need to be enumerable (no `keys()` required). If `registry.get(name)` returns `None`, the call is rejected.
 
-This is intentional: it avoids a world where “any callable injected into the environment” can be invoked from expressions without an explicit allowlist.
+The render context environment is **not** used as a fallback for function call resolution. This avoids accidentally allowing arbitrary callables present in the context to be invoked from expressions.
 
 ### Method calls
 

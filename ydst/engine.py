@@ -63,22 +63,38 @@ class TemplateEngine:
     def load_template(self, source: SourceInput, *, source_name: Optional[str] = None) -> Any:
         """Load YAML and return a template object graph (plain values + TemplateNodes).
 
-        `source` is treated as YAML content if it's a string. For filesystem paths, pass a Path.
+        `source` is treated as YAML content if it's a string.
+        For filesystem paths, pass a `pathlib.Path` (or call `load_template_file`).
         """
         include_stack: list[str] = []
         return self._load_template_internal(source, source_name=source_name, include_stack=include_stack)
 
     def load_template_file(self, path: Union[str, Path]) -> Any:
+        """Load a YAML template from a filesystem path."""
         p = Path(path)
         return self.load_template(p, source_name=str(p))
 
     def _load_template_internal(self, source: SourceInput, *, source_name: Optional[str], include_stack: list[str]) -> Any:
         if isinstance(source, Path):
-            text = source.read_text(encoding="utf-8")
+            try:
+                text = source.read_text(encoding="utf-8")
+            except Exception as e:
+                raise TemplateLoadError(
+                    f"Failed to read template file: {source}: {e}",
+                    ctx=ErrorContext(mark=SourceMark(source=str(source)), node_type="File"),
+                    cause=e,
+                )
             return self._load_from_text(text, source_name=source_name or str(source), include_stack=include_stack)
 
         if isinstance(source, (bytes, bytearray)):
-            text = source.decode("utf-8")
+            try:
+                text = source.decode("utf-8")
+            except Exception as e:
+                raise TemplateLoadError(
+                    f"Failed to decode template bytes: {e}",
+                    ctx=ErrorContext(mark=SourceMark(source=source_name), node_type="Bytes"),
+                    cause=e,
+                )
             return self._load_from_text(text, source_name=source_name, include_stack=include_stack)
 
         if isinstance(source, str):
@@ -137,8 +153,16 @@ class TemplateEngine:
                 )
             return default
 
-        res = resolver.resolve(target, from_source=from_source)
-        if not res.content:
+        try:
+            res = resolver.resolve(target, from_source=from_source)
+        except Exception as e:
+            raise TemplateLoadError(
+                f"Include resolution failed for target {target!r}: {e}",
+                ctx=ErrorContext(mark=mark, node_type="Include"),
+                cause=e,
+            )
+
+        if res.content is None:
             if required:
                 raise TemplateLoadError(
                     f"Include target not found: {target}",

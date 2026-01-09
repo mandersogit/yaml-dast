@@ -7,9 +7,16 @@ from typing import Optional, Protocol, Sequence
 
 @dataclass(frozen=True)
 class IncludeResult:
-    """Resolved include content and identity."""
+    """Resolved include content and identity.
 
-    content: str
+    `content` semantics:
+
+    - `None`   -> target was not found (missing)
+    - `""`     -> target was found and is an empty file (valid)
+    - nonempty -> target was found and contains YAML text
+    """
+
+    content: str | None
     source_name: str
     key: str
 
@@ -20,6 +27,7 @@ class IncludeResolver(Protocol):
 
         `from_source` is a best-effort source identifier for relative resolution.
         """
+
         ...
 
 
@@ -47,7 +55,8 @@ class FileIncludeResolver:
             if from_source:
                 try:
                     fs = Path(from_source)
-                    if fs.exists() or fs.suffix:  # heuristic: treat as path-like
+                    # Heuristic: treat it as path-like if it exists or looks like a filename.
+                    if fs.exists() or fs.suffix:
                         candidates.append(fs.parent / t)
                 except Exception:
                     pass
@@ -59,10 +68,11 @@ class FileIncludeResolver:
                 p = cand.resolve()
             except Exception:
                 p = cand
+
             if p.exists() and p.is_file():
                 content = p.read_text(encoding=self.encoding)
                 return IncludeResult(content=content, source_name=str(p), key=str(p))
 
-        # If we got here, nothing resolved.
+        # Nothing resolved.
         # Use the original target as key/name for diagnostics.
-        return IncludeResult(content="", source_name=str(target), key=str(target))
+        return IncludeResult(content=None, source_name=str(target), key=str(target))

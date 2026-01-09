@@ -15,7 +15,8 @@ It provides a restricted expression evaluator and a function allowlist model, bu
 - Treat templates as trusted inputs.
 - Prefer `!call` over complex `!expr` logic; keep registries small.
 - If you need to evaluate templates from partially untrusted sources:
-  - use `RenderOptions(mode="safe")` to disable attribute access and expression calls
+  - use `RenderOptions(mode="safe")` to disable attribute access and expression calls **inside `!expr`**
+    - note: this does **not** disable `!call`/`!pipe` or includes; those are controlled by what registries/resolvers you provide
   - do not provide filesystem include resolvers, or provide a resolver with explicit allowlists
   - cap work using `max_nodes` and `max_depth`
 

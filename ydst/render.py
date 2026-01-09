@@ -49,12 +49,18 @@ TraceSink = Callable[[TraceEvent], None]
 class RenderOptions:
     """Rendering options.
 
-    Notes:
-    - `strict` controls missing variables and root-omit.
+    Notes
+    -----
+    - `strict` controls missing variables and root-omit behavior.
     - `dict_key_conflict='auto'` means:
-        strict=True -> error
+        strict=True  -> error
         strict=False -> last-wins
       You can force last-wins while still strict by setting dict_key_conflict='last'.
+
+    Security note:
+    - `mode='safe'` only affects what is permitted inside `!expr`.
+      It does **not** prevent registry functions from being invoked via `!call` / `!pipe`,
+      and it does not disable file includes.
     """
 
     mode: str = "trusted"  # "trusted" | "safe"
@@ -63,8 +69,6 @@ class RenderOptions:
     allow_attribute_access_in_expr: bool = True
     allow_function_calls_in_expr: bool = True
     allow_method_calls_in_expr: bool = False
-
-    allow_templated_keys: bool = False
 
     max_depth: int = 200
     max_nodes: Optional[int] = None
@@ -155,102 +159,112 @@ def _bump(ctx: RenderContext) -> None:
 
 def _render_any(value: Any, ctx: RenderContext) -> Any:
     _bump(ctx)
-    if ctx.depth > ctx.options.max_depth:
-        raise RenderError(
-            f"Maximum render depth exceeded (max_depth={ctx.options.max_depth})",
-            ctx=ErrorContext(path=tuple(ctx.path), node_type="Depth"),
-        )
 
-    # Template nodes
-    if isinstance(value, TemplateNode):
-        before = value
-        ctx.depth += 1
-        try:
-            after = _render_node(value, ctx)
-        except RenderError:
-            raise
-        except Exception as e:
-            if ctx.options.wrap_exceptions:
-                raise RenderError(
-                    str(e),
-                    ctx=ErrorContext(
-                        path=tuple(ctx.path),
-                        mark=getattr(value, "mark", None),
-                        node_type=type(value).__name__,
-                    ),
-                    cause=e,
-                )
-            raise
-        finally:
-            ctx.depth -= 1
-
-        if ctx.options.trace is not None:
-            ctx.options.trace(
-                TraceEvent(
-                    path=tuple(ctx.path),
-                    node_type=type(value).__name__,
-                    mark=getattr(value, "mark", None),
-                    before=before,
-                    after=after,
-                )
+    # Depth limiting is applied to *all* recursive traversal, not just template nodes.
+    ctx.depth += 1
+    try:
+        if ctx.depth > ctx.options.max_depth:
+            raise RenderError(
+                f"Maximum render depth exceeded (max_depth={ctx.options.max_depth})",
+                ctx=ErrorContext(path=tuple(ctx.path), node_type="Depth"),
             )
-        return after
 
-    # Containers
-    if isinstance(value, Mapping):
-        out: dict[Any, Any] = {}
-        conflict = ctx.options.dict_conflict_policy()
-        for k, v in value.items():
-            # Keys are not templated by default
-            if not ctx.options.allow_templated_keys and isinstance(k, TemplateNode):
-                raise RenderError(
-                    "Templated mapping keys are disabled by policy",
-                    ctx=ErrorContext(path=tuple(ctx.path), node_type="MappingKey", mark=getattr(k, "mark", None)),
-                )
-            if isinstance(k, (list, dict)):
-                raise RenderError(
-                    "Mapping keys must be scalar/hashable values",
-                    ctx=ErrorContext(path=tuple(ctx.path), node_type="MappingKey"),
-                )
-
-            # Render value
-            ctx.path.append(k)
+        # Template nodes
+        if isinstance(value, TemplateNode):
+            before = value
             try:
-                rv = _render_any(v, ctx)
-            finally:
-                ctx.path.pop()
-
-            if rv is OMIT or isinstance(rv, Omit):
-                continue
-
-            if k in out:
-                if conflict == "error":
+                after = _render_node(value, ctx)
+            except RenderError:
+                raise
+            except Exception as e:
+                if ctx.options.wrap_exceptions:
                     raise RenderError(
-                        f"Duplicate key during render: {k!r}",
-                        ctx=ErrorContext(path=tuple(ctx.path) + (k,), node_type="MappingKey"),
+                        str(e),
+                        ctx=ErrorContext(
+                            path=tuple(ctx.path),
+                            mark=getattr(value, "mark", None),
+                            node_type=type(value).__name__,
+                        ),
+                        cause=e,
                     )
-                if conflict == "first":
+                raise
+
+            if ctx.options.trace is not None:
+                ctx.options.trace(
+                    TraceEvent(
+                        path=tuple(ctx.path),
+                        node_type=type(value).__name__,
+                        mark=getattr(value, "mark", None),
+                        before=before,
+                        after=after,
+                    )
+                )
+            return after
+
+        # Containers
+        if isinstance(value, Mapping):
+            out: dict[Any, Any] = {}
+            conflict = ctx.options.dict_conflict_policy()
+            for k, v in value.items():
+                # Templated/dynamic keys are not supported because YAML mappings must have
+                # hashable keys at load time; use `!foreach into:dict` instead.
+                if isinstance(k, TemplateNode):
+                    raise RenderError(
+                        "Templated mapping keys are not supported (use !foreach into:dict)",
+                        ctx=ErrorContext(path=tuple(ctx.path), node_type="MappingKey", mark=getattr(k, "mark", None)),
+                    )
+
+                # Ensure keys are hashable so we can build a Python dict.
+                try:
+                    hash(k)
+                except Exception as e:
+                    raise RenderError(
+                        "Mapping keys must be hashable values",
+                        ctx=ErrorContext(path=tuple(ctx.path), node_type="MappingKey"),
+                        cause=e if ctx.options.wrap_exceptions else None,
+                    )
+
+                # Render value
+                ctx.path.append(k)
+                try:
+                    rv = _render_any(v, ctx)
+                finally:
+                    ctx.path.pop()
+
+                if rv is OMIT or isinstance(rv, Omit):
                     continue
-                # last-wins
-            out[k] = rv
-        return out
 
-    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
-        out_list: list[Any] = []
-        for i, item in enumerate(value):
-            ctx.path.append(i)
-            try:
-                ri = _render_any(item, ctx)
-            finally:
-                ctx.path.pop()
+                if k in out:
+                    if conflict == "error":
+                        raise RenderError(
+                            f"Duplicate key during render: {k!r}",
+                            ctx=ErrorContext(path=tuple(ctx.path) + (k,), node_type="MappingKey"),
+                        )
+                    if conflict == "first":
+                        continue
+                    # last-wins
+                out[k] = rv
+            return out
 
-            if ri is OMIT or isinstance(ri, Omit):
-                continue
-            out_list.append(ri)
-        return out_list
+        if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+            out_list: list[Any] = []
+            for i, item in enumerate(value):
+                ctx.path.append(i)
+                try:
+                    ri = _render_any(item, ctx)
+                finally:
+                    ctx.path.pop()
 
-    # Scalars
-    return value
+                if ri is OMIT or isinstance(ri, Omit):
+                    continue
+                out_list.append(ri)
+            return out_list
+
+        # Scalars
+        return value
+
+    finally:
+        ctx.depth -= 1
 
 
 def _render_node(node: TemplateNode, ctx: RenderContext) -> Any:
@@ -295,8 +309,12 @@ def _render_var(node: Var, ctx: RenderContext) -> Any:
             f"Missing required variable: {name}",
             ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="Var"),
         )
-    if node.default is not OMIT and not isinstance(node.default, Omit):
+
+    # Only the singleton sentinel OMIT means "no default specified".
+    # If the default is an actual `!omit` node, render it so the enclosing container drops it.
+    if node.default is not OMIT:
         return _render_any(node.default, ctx)
+
     return None
 
 
@@ -449,18 +467,14 @@ def _render_expr(node: Expr, ctx: RenderContext) -> Any:
     )
 
     env = _build_expr_env(ctx)
-    allowed_funcs: dict[str, Callable[..., Any]] = {}
 
-    if ctx.registry is not None:
-        keys = getattr(ctx.registry, "keys", None)
-        if callable(keys):
-            for name in ctx.registry.keys():  # type: ignore[attr-defined]
-                fn = ctx.registry.get(name)  # type: ignore[arg-type]
-                if callable(fn):
-                    env[name] = fn
-                    allowed_funcs[name] = fn
+    def _fn_resolver(name: str) -> Optional[Callable[..., Any]]:
+        if ctx.registry is None:
+            return None
+        fn = ctx.registry.get(name)
+        return fn if callable(fn) else None
 
-    evaluator = ExpressionEvaluator(policy=policy, allowed_functions=allowed_funcs)
+    evaluator = ExpressionEvaluator(policy=policy, function_resolver=_fn_resolver)
     compiled = node._compiled
     if compiled is None:
         try:
@@ -480,7 +494,7 @@ def _render_expr(node: Expr, ctx: RenderContext) -> Any:
         return evaluator.eval(compiled, env)
     except NameError as e:
         if not node.strict or not ctx.options.strict:
-            if node.default is not OMIT and not isinstance(node.default, Omit):
+            if node.default is not OMIT:
                 return _render_any(node.default, ctx)
             return None
         raise MissingVariableError(
@@ -505,7 +519,11 @@ def _render_expr(node: Expr, ctx: RenderContext) -> Any:
 
 
 def _render_call(node: Call, ctx: RenderContext, *, pipe_input: Any = None, include_pipe_input: bool = False) -> Any:
-    fn_val = _render_any(node.fn, ctx) if isinstance(node.fn, TemplateNode) or isinstance(node.fn, (Mapping, Sequence)) else node.fn
+    fn_val = (
+        _render_any(node.fn, ctx)
+        if isinstance(node.fn, TemplateNode) or isinstance(node.fn, (Mapping, Sequence))
+        else node.fn
+    )
     if not isinstance(fn_val, str) or not fn_val:
         raise RenderError(
             f"!call function name must render to a non-empty string (got {fn_val!r})",
@@ -611,7 +629,7 @@ def _render_include_runtime(node: IncludeRuntime, ctx: RenderContext) -> Any:
                 "!include_rt requires an include_resolver",
                 ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="IncludeRuntime"),
             )
-        if node.default is not OMIT and not isinstance(node.default, Omit):
+        if node.default is not OMIT:
             return _render_any(node.default, ctx)
         return None
 
@@ -622,14 +640,24 @@ def _render_include_runtime(node: IncludeRuntime, ctx: RenderContext) -> Any:
             ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="IncludeRuntime"),
         )
 
-    res = resolver.resolve(target_val, from_source=(node.mark.source if node.mark else None))
-    if not res.content:
+    try:
+        res = resolver.resolve(target_val, from_source=(node.mark.source if node.mark else None))
+    except Exception as e:
+        if ctx.options.wrap_exceptions:
+            raise IncludeError(
+                f"Include resolution failed for target {target_val!r}: {e}",
+                ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="IncludeRuntime"),
+                cause=e,
+            )
+        raise
+
+    if res.content is None:
         if node.required and ctx.options.strict:
             raise IncludeError(
                 f"Include target not found: {target_val}",
                 ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="IncludeRuntime"),
             )
-        if node.default is not OMIT and not isinstance(node.default, Omit):
+        if node.default is not OMIT:
             return _render_any(node.default, ctx)
         return None
 
