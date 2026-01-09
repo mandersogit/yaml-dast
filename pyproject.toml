@@ -48,10 +48,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/manders2k/yaml-dast"
-Repository = "https://github.com/manders2k/yaml-dast"
-Documentation = "https://github.com/manders2k/yaml-dast/tree/main/docs"
-Issues = "https://github.com/manders2k/yaml-dast/issues"
+Homepage = "https://github.com/mandersogit/yaml-dast"
+Repository = "https://github.com/mandersogit/yaml-dast"
+Documentation = "https://github.com/mandersogit/yaml-dast/tree/main/docs"
+Issues = "https://github.com/mandersogit/yaml-dast/issues"
 
 [project.scripts]
 ydst = "ydst.cli:main"
