@@ -8,10 +8,12 @@ import ydst.nodes as nodes
 import ydst.registry as registry_mod
 import ydst.validate as validate_mod
 
+if _typing.TYPE_CHECKING:
+    import ydst.template as _template_mod
 
-def collect_expressions(template: _typing.Any) -> set[str]:
+
+def collect_expressions(template: _template_mod.Template) -> set[str]:
     """Collect expression strings referenced by !expr nodes."""
-
     out: set[str] = set()
 
     def walk(x: _typing.Any) -> None:
@@ -38,11 +40,11 @@ def collect_expressions(template: _typing.Any) -> set[str]:
                 walk(v)
             return
 
-    walk(template)
+    walk(template.root)
     return out
 
 
-def collect_calls(template: _typing.Any) -> set[str]:
+def collect_calls(template: _template_mod.Template) -> set[str]:
     """Collect explicitly named registry function calls.
 
     This collects `!call` nodes whose `fn` is a literal string.
@@ -50,7 +52,6 @@ def collect_calls(template: _typing.Any) -> set[str]:
     Note: this does not attempt to infer which `!pipe` string stages will call the registry
     at runtime, since that depends on the registry and render options.
     """
-
     out: set[str] = set()
 
     def walk(x: _typing.Any) -> None:
@@ -82,13 +83,12 @@ def collect_calls(template: _typing.Any) -> set[str]:
                 walk(v)
             return
 
-    walk(template)
+    walk(template.root)
     return out
 
 
-def collect_includes(template: _typing.Any) -> set[str]:
+def collect_includes(template: _template_mod.Template) -> set[str]:
     """Collect render-time include targets that are literal strings."""
-
     out: set[str] = set()
 
     def walk(x: _typing.Any) -> None:
@@ -117,16 +117,15 @@ def collect_includes(template: _typing.Any) -> set[str]:
                 walk(v)
             return
 
-    walk(template)
+    walk(template.root)
     return out
 
 
-def collect_pipe_stage_strings(template: _typing.Any) -> set[str]:
+def collect_pipe_stage_strings(template: _template_mod.Template) -> set[str]:
     """Collect literal string stages used in !pipe nodes.
 
     These strings *may* correspond to registry functions (depending on `registry` and render options).
     """
-
     out: set[str] = set()
 
     def walk(x: _typing.Any) -> None:
@@ -154,13 +153,12 @@ def collect_pipe_stage_strings(template: _typing.Any) -> set[str]:
                 walk(v)
             return
 
-    walk(template)
+    walk(template.root)
     return out
 
 
-def collect_setdefault_names(template: _typing.Any) -> set[str]:
+def collect_setdefault_names(template: _template_mod.Template) -> set[str]:
     """Collect variable names established via `!setdefault`."""
-
     out: set[str] = set()
 
     def walk(x: _typing.Any) -> None:
@@ -187,13 +185,12 @@ def collect_setdefault_names(template: _typing.Any) -> set[str]:
                 walk(v)
             return
 
-    walk(template)
+    walk(template.root)
     return out
 
 
-def count_python_blocks(template: _typing.Any) -> tuple[int, int]:
+def count_python_blocks(template: _template_mod.Template) -> tuple[int, int]:
     """Return (python_count, python_module_count)."""
-
     python_count = 0
     python_module_count = 0
 
@@ -223,7 +220,7 @@ def count_python_blocks(template: _typing.Any) -> tuple[int, int]:
                 walk(v)
             return
 
-    walk(template)
+    walk(template.root)
     return python_count, python_module_count
 
 
@@ -247,7 +244,11 @@ class Dependencies:
     has_dynamic_includes: bool
 
 
-def analyze_dependencies(template: _typing.Any, *, registry: registry_mod.FunctionRegistry | None = None) -> Dependencies:
+def analyze_dependencies(
+    template: _template_mod.Template,
+    *,
+    registry: registry_mod.FunctionRegistry | None = None,
+) -> Dependencies:
     """Analyze a template graph and return a coarse dependency summary.
 
     Parameters
@@ -256,7 +257,6 @@ def analyze_dependencies(template: _typing.Any, *, registry: registry_mod.Functi
         If provided, `pipe_registry_functions` will include those `!pipe` string stages
         that resolve to callables in the registry.
     """
-
     vars_ = validate_mod.collect_variables(template)
     exprs = collect_expressions(template)
     calls = collect_calls(template)
@@ -305,7 +305,7 @@ def analyze_dependencies(template: _typing.Any, *, registry: registry_mod.Functi
                 walk_dyn(v)
             return
 
-    walk_dyn(template)
+    walk_dyn(template.root)
 
     pipe_registry_functions: set[str] = set()
     if registry is not None:

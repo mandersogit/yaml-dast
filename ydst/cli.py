@@ -17,14 +17,15 @@ import ydst.include as include_mod
 import ydst.normalize as normalize_mod
 import ydst.registry as registry_mod
 import ydst.render as render_mod
+import ydst.template as template_mod
 import ydst.validate as validate_mod
 
 
-def _load_template(engine: engine_mod.TemplateEngine, template_arg: str) -> _typing.Any:
+def _load_template(engine: engine_mod.TemplateEngine, template_arg: str) -> template_mod.Template:
     if template_arg == "-":
         text = _sys.stdin.read()
         return engine.load_template_text(text, source_name="<stdin>")
-    return engine.load_template_file(template_arg)
+    return engine.load_template_path(template_arg)
 
 
 def _load_json_context(args: _argparse.Namespace) -> dict[str, _typing.Any]:
@@ -113,6 +114,7 @@ def cmd_render(args: _argparse.Namespace) -> None:
         trace_fp = _sys.stderr
         if args.trace_file:
             trace_fp = open(args.trace_file, "w", encoding="utf-8")  # noqa: SIM115
+        assert trace_fp is not None  # guaranteed by control flow
         trace_sink = _trace_sink(trace_fp)
 
     try:
@@ -132,7 +134,7 @@ def cmd_render(args: _argparse.Namespace) -> None:
             trace=trace_sink,
         )
 
-        out = engine.render(template, context=context, registry=registry, options=options)
+        out = template.render(context=context, registry=registry, options=options)
     finally:
         if args.trace and trace_fp is not None and trace_fp is not _sys.stderr:
             trace_fp.close()

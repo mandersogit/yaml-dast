@@ -62,7 +62,7 @@ def chain_registries(*registries: FunctionRegistry) -> FunctionRegistry:
                 keys = getattr(r, "keys", None)
                 if callable(keys):
                     try:
-                        for k in keys():
+                        for k in keys():  # type: ignore[union-attr]
                             if k not in seen:
                                 seen.add(k)
                                 yield k

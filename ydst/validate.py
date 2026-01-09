@@ -8,10 +8,12 @@ import ydst.nodes as nodes
 import ydst.registry as registry_mod
 import ydst.render as render_mod
 
+if _typing.TYPE_CHECKING:
+    import ydst.template as _template_mod
 
-def collect_variables(template: _typing.Any) -> set[str]:
+
+def collect_variables(template: _template_mod.Template) -> set[str]:
     """Collect variable names referenced by !var nodes."""
-
     out: set[str] = set()
 
     def walk(x: _typing.Any) -> None:
@@ -38,7 +40,7 @@ def collect_variables(template: _typing.Any) -> set[str]:
                 walk(v)
             return
 
-    walk(template)
+    walk(template.root)
     return out
 
 
@@ -82,7 +84,7 @@ def _validate_python_code(code: str, *, ctx: errors.ErrorContext) -> None:
 
 
 def validate_template(
-    template: _typing.Any,
+    template: _template_mod.Template,
     *,
     options: render_mod.RenderOptions | None = None,
     registry: registry_mod.FunctionRegistry | None = None,
@@ -96,10 +98,9 @@ def validate_template(
       - some node-specific structural invariants are checked
       - if a registry is provided, string-literal call targets are validated
     """
-
     opts = (options or render_mod.RenderOptions()).normalized()
 
-    def walk(x: _typing.Any, path: tuple[_typing.Any, ...]) -> None:
+    def walk(x: _typing.Any, path: tuple[nodes.PathSegment, ...]) -> None:
         ctx = errors.ErrorContext(path=path)
 
         if isinstance(x, nodes.TemplateNode):
@@ -167,4 +168,4 @@ def validate_template(
                 walk(v, path + (i,))
             return
 
-    walk(template, ())
+    walk(template.root, ())

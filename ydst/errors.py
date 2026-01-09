@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import collections.abc as _abc
 import dataclasses as _dataclasses
-import typing as _typing
 
 import ydst.nodes as nodes
 
 
-def format_path(path: _abc.Sequence[_typing.Any]) -> str:
+def format_path(path: _abc.Sequence[nodes.PathSegment]) -> str:
     """Format a render/load path into a JSONPath-like string.
 
     Rules:
@@ -50,7 +49,7 @@ class YdstError(Exception):
 
 @_dataclasses.dataclass
 class ErrorContext:
-    path: tuple[_typing.Any, ...] = ()
+    path: tuple[nodes.PathSegment, ...] = ()
     mark: nodes.SourceMark | None = None
     node_type: str | None = None
 

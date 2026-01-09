@@ -13,6 +13,7 @@ import ydst.loader as loader_mod
 import ydst.nodes as nodes
 import ydst.render as render_mod
 import ydst.registry as registry_mod
+import ydst.template as template_mod
 
 
 SourceInput = str | bytes | _pathlib.Path | _typing.IO[str]
@@ -38,6 +39,8 @@ class TemplateEngine:
         allow_load_time_includes: bool = True,
         base_loader: type[_yaml.Loader] = _yaml.SafeLoader,  # type: ignore[assignment]
         max_include_depth: int | None = None,
+        options: render_mod.RenderOptions | None = None,
+        registry: registry_mod.FunctionRegistry | None = None,
     ):
         self.include_resolver = include_resolver
         self.allow_load_time_includes = allow_load_time_includes
@@ -45,6 +48,8 @@ class TemplateEngine:
         self.max_include_depth = max_include_depth
         self._loader_class = self._make_loader_class(base_loader)
         self._custom_tags: dict[str, _typing.Callable[..., _typing.Any]] = {}
+        self._options = options if options is not None else render_mod.RenderOptions()
+        self._registry = registry if registry is not None else registry_mod.safe_registry()
 
     def _make_loader_class(self, base: type[_yaml.Loader]) -> type[_yaml.Loader]:
         # Create a per-engine loader class so constructor registration is isolated.
@@ -56,6 +61,31 @@ class TemplateEngine:
     def Loader(self) -> type[_yaml.Loader]:
         return self._loader_class
 
+    @property
+    def options(self) -> render_mod.RenderOptions:
+        """The render options for this engine.
+
+        Users can copy and modify for per-render customization::
+
+            import dataclasses as _dataclasses
+
+            my_opts = _dataclasses.replace(engine.options, allow_python=True)
+            tmpl.render(context=ctx, options=my_opts)
+        """
+        return self._options
+
+    @property
+    def registry(self) -> registry_mod.FunctionRegistry:
+        """The function registry for this engine.
+
+        Users can extend for per-render customization::
+
+            my_reg = engine.registry.copy()
+            my_reg.register("my_func", my_func)
+            tmpl.render(context=ctx, registry=my_reg)
+        """
+        return self._registry
+
     def register_tag(self, tag: str, constructor: _typing.Callable[..., _typing.Any]) -> None:
         """Register an additional YAML tag constructor on this engine's loader."""
         if not tag.startswith("!"):
@@ -64,10 +94,17 @@ class TemplateEngine:
         self._loader_class.add_constructor(tag, constructor)  # type: ignore[attr-defined]
 
     # ----------------------------
-    # Loading
+    # Raw Loading (returns node tree, not Template)
     # ----------------------------
-    def load_template(self, source: SourceInput, *, source_name: str | None = None) -> _typing.Any:
-        """Load YAML and return a template object graph (plain values + TemplateNodes).
+    def load_yaml(self, source: SourceInput, *, source_name: str | None = None) -> nodes.NodeTree:
+        """Load YAML and return the raw parse result.
+
+        Returns whatever the YAML parser produces:
+        - TemplateNode subclasses for tags (!var, !if, etc.)
+        - dict/list/scalar for plain YAML
+        - Mixed structures
+
+        This is the low-level API. Most users should use load_template().
 
         Semantics
         ---------
@@ -75,9 +112,8 @@ class TemplateEngine:
         - If `source` is bytes/bytearray, it is treated as UTF-8 YAML text.
         - If `source` is a file-like object, YAML is read from the stream.
 
-        If you want to parse YAML from a Python string, use :meth:`load_template_text`.
+        If you want to parse YAML from a Python string, use :meth:`load_yaml_text`.
         """
-
         include_stack: list[str] = []
 
         if isinstance(source, str):
@@ -93,25 +129,69 @@ class TemplateEngine:
 
         return self._load_template_internal(source, source_name=source_name, include_stack=include_stack)
 
-    def load_template_file(self, path: str | _pathlib.Path) -> _typing.Any:
-        """Load a YAML template from a filesystem path."""
-        p = _pathlib.Path(path)
-        return self.load_template(p, source_name=str(p))
-
-    def load_template_text(self, text: str, *, source_name: str | None = None) -> _typing.Any:
-        """Load a YAML template from a text string.
-
-        This is the explicit way to parse YAML from a Python `str`.
-        """
+    def load_yaml_text(self, text: str, *, source_name: str | None = None) -> nodes.NodeTree:
+        """Load YAML from a string, return raw result."""
         include_stack: list[str] = []
         return self._load_template_internal(text, source_name=source_name, include_stack=include_stack)
 
-    def load_template_path(self, path: str | _pathlib.Path) -> _typing.Any:
-        """Alias for :meth:`load_template_file`.
+    def load_yaml_path(self, path: str | _pathlib.Path) -> nodes.NodeTree:
+        """Load YAML from a filesystem path, return raw result."""
+        p = _pathlib.Path(path)
+        return self.load_yaml(p, source_name=str(p))
 
-        Provided for API clarity: "path" is unambiguously treated as a filesystem path.
+    def load_yaml_stream(self, stream: _typing.IO[str], *, source_name: str | None = None) -> nodes.NodeTree:
+        """Load YAML from an IO stream (file handle, StringIO, etc.), return raw result."""
+        include_stack: list[str] = []
+        return self._load_template_internal(stream, source_name=source_name, include_stack=include_stack)
+
+    # ----------------------------
+    # Template Loading (returns Template wrapper)
+    # ----------------------------
+    def load_template(
+        self, source: SourceInput, *, source_name: str | None = None
+    ) -> "template_mod.Template":
+        """Load a template and return a Template object.
+
+        This is the primary API for loading templates.
+
+        Semantics
+        ---------
+        - If `source` is a `str` or `pathlib.Path`, it is treated as a **filesystem path**.
+        - If `source` is bytes/bytearray, it is treated as UTF-8 YAML text.
+        - If `source` is a file-like object, YAML is read from the stream.
+
+        If you want to parse YAML from a Python string, use :meth:`load_template_text`.
         """
-        return self.load_template_file(path)
+        # Determine source name for path inputs
+        effective_source_name = source_name
+        if effective_source_name is None:
+            if isinstance(source, str):
+                effective_source_name = source
+            elif isinstance(source, _pathlib.Path):
+                effective_source_name = str(source)
+
+        root = self.load_yaml(source, source_name=source_name)
+        return template_mod.Template(root=root, engine=self, source_name=effective_source_name)
+
+    def load_template_text(
+        self, text: str, *, source_name: str | None = None
+    ) -> "template_mod.Template":
+        """Load a template from a string."""
+        root = self.load_yaml_text(text, source_name=source_name)
+        return template_mod.Template(root=root, engine=self, source_name=source_name)
+
+    def load_template_path(self, path: str | _pathlib.Path) -> "template_mod.Template":
+        """Load a template from a filesystem path."""
+        p = _pathlib.Path(path)
+        root = self.load_yaml_path(p)
+        return template_mod.Template(root=root, engine=self, source_name=str(p))
+
+    def load_template_stream(
+        self, stream: _typing.IO[str], *, source_name: str | None = None
+    ) -> "template_mod.Template":
+        """Load a template from an IO stream (file handle, StringIO, etc.)."""
+        root = self.load_yaml_stream(stream, source_name=source_name)
+        return template_mod.Template(root=root, engine=self, source_name=source_name)
 
     def _load_template_internal(
         self,
@@ -119,7 +199,7 @@ class TemplateEngine:
         *,
         source_name: str | None,
         include_stack: list[str],
-    ) -> _typing.Any:
+    ) -> nodes.NodeTree:
         if isinstance(source, _pathlib.Path):
             try:
                 text = source.read_text(encoding="utf-8")
@@ -151,7 +231,7 @@ class TemplateEngine:
 
         raise TypeError(f"Unsupported source type: {type(source)!r}")
 
-    def _load_from_text(self, text: str, *, source_name: str | None, include_stack: list[str]) -> _typing.Any:
+    def _load_from_text(self, text: str, *, source_name: str | None, include_stack: list[str]) -> nodes.NodeTree:
         return self._load_with_loader(_io.StringIO(text), source_name=source_name, include_stack=include_stack)
 
     def _load_from_stream(
@@ -160,7 +240,7 @@ class TemplateEngine:
         *,
         source_name: str | None,
         include_stack: list[str],
-    ) -> _typing.Any:
+    ) -> nodes.NodeTree:
         return self._load_with_loader(stream, source_name=source_name, include_stack=include_stack)
 
     def _load_with_loader(
@@ -169,7 +249,7 @@ class TemplateEngine:
         *,
         source_name: str | None,
         include_stack: list[str],
-    ) -> _typing.Any:
+    ) -> nodes.NodeTree:
         loader = self.Loader(stream)
         setattr(loader, "_ydst_engine", self)
         setattr(loader, "_ydst_source_name", source_name)
@@ -278,22 +358,33 @@ class TemplateEngine:
             stack.pop()
 
     # ----------------------------
-    # Rendering
+    # Rendering (internal)
     # ----------------------------
-    def render(
+    def _render_tree(
         self,
-        template: _typing.Any,
+        tree: nodes.NodeTree,
         *,
         context: _abc.Mapping[str, _typing.Any] | None = None,
         registry: registry_mod.FunctionRegistry | None = None,
         options: render_mod.RenderOptions | None = None,
         include_resolver: include.IncludeResolver | None = None,
     ) -> _typing.Any:
-        return render_mod.render_template(
-            template,
+        """Internal: render a node tree.
+
+        Users should call Template.render() instead.
+
+        Args:
+            tree: Node tree to render (dict, list, TemplateNode, etc.)
+            context: Variables available to the template.
+            registry: Function registry (default: engine's registry).
+            options: Render options (default: engine's options).
+            include_resolver: Include resolver for !include_rt.
+        """
+        return render_mod.render_tree(
+            tree,
             context=dict(context or {}),
-            registry=registry,
-            options=options,
+            registry=registry if registry is not None else self._registry,
+            options=options if options is not None else self._options,
             engine=self,
             include_resolver=include_resolver or self.include_resolver,
         )

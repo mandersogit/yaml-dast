@@ -4,6 +4,24 @@ import collections.abc as _abc
 import dataclasses as _dataclasses
 import typing as _typing
 
+# ---------------------------------------------------------------------------
+# Type aliases
+# ---------------------------------------------------------------------------
+
+NodeTree: _typing.TypeAlias = _typing.Any
+"""A parsed YAML structure: dicts, lists, scalars, or TemplateNode instances.
+
+This is the raw result of YAML parsing before being wrapped in a Template.
+"""
+
+PathSegment: _typing.TypeAlias = str | int | tuple[str, str | int]
+"""A path segment: string key, integer index, or compound (e.g., ('args', 0))."""
+
+
+# ---------------------------------------------------------------------------
+# Source location
+# ---------------------------------------------------------------------------
+
 
 @_dataclasses.dataclass(frozen=True, slots=True)
 class SourceMark:

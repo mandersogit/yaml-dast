@@ -12,7 +12,10 @@ import ydst.include as include_mod
 import ydst.nodes as nodes
 import ydst.registry as registry_mod
 
-# Local aliases for readability (no `from ... import ...`).
+# Local aliases: This violates our "no namespace pollution" style, but render.py
+# is 1100+ lines and these names appear hundreds of times. The verbosity of
+# `nodes.TemplateNode` everywhere would hurt readability more than the aliases.
+# We use assignment aliases (not `from ... import`) so provenance is still clear.
 ChainMap = _collections.ChainMap
 OrderedDict = _collections.OrderedDict
 
@@ -20,6 +23,8 @@ TemplateNode = nodes.TemplateNode
 Omit = nodes.Omit
 OMIT = nodes.OMIT
 UNSET = nodes.UNSET
+NodeTree = nodes.NodeTree
+PathSegment = nodes.PathSegment
 
 Var = nodes.Var
 Default = nodes.Default
@@ -59,7 +64,7 @@ class _PythonEmitSignal(BaseException):
 class TraceEvent:
     """A trace event emitted when rendering a node."""
 
-    path: tuple[_typing.Any, ...]
+    path: tuple[PathSegment, ...]
     node_type: str
     mark: nodes.SourceMark | None
     before: _typing.Any
@@ -183,7 +188,7 @@ class RenderContext:
     scope: ChainMap
 
     # Runtime state
-    path: list[_typing.Any] = _dataclasses.field(default_factory=list)
+    path: list[PathSegment] = _dataclasses.field(default_factory=list)
     depth: int = 0
     node_count: int = 0
 
@@ -198,8 +203,8 @@ class RenderContext:
     include_stack: list[str] = _dataclasses.field(default_factory=list)
 
 
-def render_template(
-    template: _typing.Any,
+def render_tree(
+    tree: NodeTree,
     *,
     context: _abc.Mapping[str, _typing.Any] | None = None,
     registry: registry_mod.FunctionRegistry | None = None,
@@ -207,11 +212,11 @@ def render_template(
     include_resolver: include_mod.IncludeResolver | None = None,
     engine: _typing.Any = None,
     runtime_include_cache: OrderedDict[str, _typing.Any] | None = None,
-    path_prefix: list[_typing.Any] | None = None,
+    path_prefix: list[PathSegment] | None = None,
     depth: int = 0,
     node_count: int = 0,
 ) -> _typing.Any:
-    """Render a template object into concrete Python data."""
+    """Render a node tree into concrete Python data."""
 
     opts = (options or RenderOptions()).normalized()
 
@@ -270,7 +275,7 @@ def render_template(
         function_resolver=_resolve_allowed_fn,
     )
 
-    out = _render_any(template, ctx)
+    out = _render_any(tree, ctx)
 
     if out is OMIT or isinstance(out, Omit):
         raise RootOmitError("Template rendered to !omit at the document root", ctx=ErrorContext(path=tuple(ctx.path)))
@@ -320,7 +325,7 @@ def _pop_depth(ctx: RenderContext) -> None:
 
 
 class _PathGuard:
-    def __init__(self, ctx: RenderContext, seg: _typing.Any):
+    def __init__(self, ctx: RenderContext, seg: PathSegment):
         self._ctx = ctx
         self._seg = seg
 
@@ -332,7 +337,7 @@ class _PathGuard:
         self._ctx.path.pop()
 
 
-def _path(ctx: RenderContext, seg: _typing.Any) -> _PathGuard:
+def _path(ctx: RenderContext, seg: PathSegment) -> _PathGuard:
     return _PathGuard(ctx, seg)
 
 
@@ -740,7 +745,7 @@ def _render_call(node: Call, ctx: RenderContext) -> _typing.Any:
         keys = getattr(ctx.registry, "keys", None)
         if callable(keys):
             try:
-                available = sorted(list(keys()))
+                available = sorted(list(keys()))  # type: ignore[arg-type]
             except Exception:
                 available = []
         hint = f" Available: {available}" if available else ""
@@ -939,7 +944,8 @@ def _render_include_rt(node: IncludeRuntime, ctx: RenderContext) -> _typing.Any:
                 return _render_any(included_tmpl, ctx)
 
         try:
-            included_tmpl = ctx.engine.load_template_text(res.content, source_name=res.source_name)
+            # Use load_yaml_text to get raw node tree, not Template wrapper
+            included_tmpl = ctx.engine.load_yaml_text(res.content, source_name=res.source_name)
         except Exception as e:
             raise IncludeError(
                 f"Error loading included template {target!r}: {e}",

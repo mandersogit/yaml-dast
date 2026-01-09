@@ -7,157 +7,108 @@ This package provides:
 - Optional include resolvers and a simple CLI.
 
 See README.md for usage examples.
+
+For advanced features, import from submodules:
+- ydst.nodes: Node classes (Var, If, ForEach, etc.), sentinels (OMIT, UNSET)
+- ydst.errors: Specific error classes (MissingVariableError, ExpressionError, etc.)
+- ydst.analysis: Static analysis (collect_variables, analyze_dependencies, etc.)
+- ydst.validate: Template validation
+- ydst.registry: Registry utilities (chain_registries, minimal_registry, etc.)
+- ydst.include: Include resolver protocol and utilities
 """
 
 from __future__ import annotations
 
-import ydst.analysis as analysis_mod
-import ydst.api as api_mod
-import ydst.engine as engine_mod
-import ydst.errors as errors_mod
-import ydst.include as include_mod
-import ydst.nodes as nodes_mod
-import ydst.normalize as normalize_mod
-import ydst.registry as registry_mod
-import ydst.render as render_mod
-import ydst.validate as validate_mod
+import ydst.api as _api_mod
+import ydst.engine as _engine_mod
+import ydst.errors as _errors_mod
+import ydst.include as _include_mod
+import ydst.registry as _registry_mod
+import ydst.render as _render_mod
+import ydst.template as _template_mod
 
-# Engine / API
-TemplateEngine = engine_mod.TemplateEngine
-load_template = api_mod.load_template
-load_template_text = api_mod.load_template_text
-load_template_file = api_mod.load_template_file
-render = api_mod.render
-safe_engine = api_mod.safe_engine
-safe_render = api_mod.safe_render
-to_jsonable = normalize_mod.to_jsonable
+# -----------------------------------------------------------------------------
+# Core API
+# -----------------------------------------------------------------------------
 
-# Render primitives
-RenderOptions = render_mod.RenderOptions
-TraceEvent = render_mod.TraceEvent
+# Template class - the primary user-facing interface
+Template = _template_mod.Template
 
-# Nodes / sentinels
-SourceMark = nodes_mod.SourceMark
-TemplateNode = nodes_mod.TemplateNode
-Omit = nodes_mod.Omit
-OMIT = nodes_mod.OMIT
-UNSET = nodes_mod.UNSET
+# Engine - for customization and advanced usage
+TemplateEngine = _engine_mod.TemplateEngine
 
-Var = nodes_mod.Var
-Default = nodes_mod.Default
-If = nodes_mod.If
-ForEach = nodes_mod.ForEach
-Expr = nodes_mod.Expr
-Call = nodes_mod.Call
-Pipe = nodes_mod.Pipe
-IncludeRuntime = nodes_mod.IncludeRuntime
-SetDefault = nodes_mod.SetDefault
-Python = nodes_mod.Python
-PythonModule = nodes_mod.PythonModule
+# Configuration
+RenderOptions = _render_mod.RenderOptions
 
-# Errors
-YdstError = errors_mod.YdstError
-TemplateLoadError = errors_mod.TemplateLoadError
-TemplateValidationError = errors_mod.TemplateValidationError
-RenderError = errors_mod.RenderError
-MissingVariableError = errors_mod.MissingVariableError
-RootOmitError = errors_mod.RootOmitError
-ExpressionError = errors_mod.ExpressionError
-FunctionNotFoundError = errors_mod.FunctionNotFoundError
-FunctionCallError = errors_mod.FunctionCallError
-IncludeError = errors_mod.IncludeError
-IncludeCycleError = errors_mod.IncludeCycleError
-PythonError = errors_mod.PythonError
-PythonEmitError = errors_mod.PythonEmitError
+# Factory for safe/sandboxed engines
+safe_engine = _api_mod.safe_engine
 
-# Includes
-IncludeResolver = include_mod.IncludeResolver
-FileIncludeResolver = include_mod.FileIncludeResolver
-IncludeResult = include_mod.IncludeResult
+# -----------------------------------------------------------------------------
+# One-shot rendering (load + render in one call)
+# -----------------------------------------------------------------------------
 
-# Validation / analysis
-validate_template = validate_mod.validate_template
-collect_variables = validate_mod.collect_variables
+render_text = _template_mod.render_text
+render_path = _template_mod.render_path
+render_stream = _template_mod.render_stream
 
-collect_expressions = analysis_mod.collect_expressions
-collect_calls = analysis_mod.collect_calls
-collect_includes = analysis_mod.collect_includes
-collect_pipe_stage_strings = analysis_mod.collect_pipe_stage_strings
-analyze_dependencies = analysis_mod.analyze_dependencies
-Dependencies = analysis_mod.Dependencies
+# -----------------------------------------------------------------------------
+# Module-level default engine management
+# -----------------------------------------------------------------------------
 
-# Registry
-FunctionRegistry = registry_mod.FunctionRegistry
-default_registry = registry_mod.default_registry
-safe_registry = registry_mod.safe_registry
-minimal_registry = registry_mod.minimal_registry
-extended_registry = registry_mod.extended_registry
-DictFunctionRegistry = registry_mod.DictFunctionRegistry
-chain_registries = registry_mod.chain_registries
+get_default_engine = _template_mod.get_default_engine
+set_default_engine = _template_mod.set_default_engine
+
+# -----------------------------------------------------------------------------
+# Errors (base classes for exception handling)
+# -----------------------------------------------------------------------------
+
+YdstError = _errors_mod.YdstError
+RenderError = _errors_mod.RenderError
+TemplateLoadError = _errors_mod.TemplateLoadError
+TemplateValidationError = _errors_mod.TemplateValidationError
+
+# -----------------------------------------------------------------------------
+# Registry (for custom functions in templates)
+# -----------------------------------------------------------------------------
+
+FunctionRegistry = _registry_mod.FunctionRegistry
+DictFunctionRegistry = _registry_mod.DictFunctionRegistry
+safe_registry = _registry_mod.safe_registry
+extended_registry = _registry_mod.extended_registry
+
+# -----------------------------------------------------------------------------
+# Includes (for custom include resolution)
+# -----------------------------------------------------------------------------
+
+FileIncludeResolver = _include_mod.FileIncludeResolver
+
+# -----------------------------------------------------------------------------
+# Public API
+# -----------------------------------------------------------------------------
 
 __all__ = [
-    # Engine / API
+    # Core
+    "Template",
     "TemplateEngine",
-    "load_template",
-    "load_template_text",
-    "load_template_file",
-    "render",
-    "safe_engine",
-    "safe_render",
-    "to_jsonable",
-    # Render primitives
     "RenderOptions",
-    "TraceEvent",
-    # Validation / analysis
-    "validate_template",
-    "collect_variables",
-    "collect_expressions",
-    "collect_calls",
-    "collect_includes",
-    "collect_pipe_stage_strings",
-    "analyze_dependencies",
-    "Dependencies",
-    # Nodes / sentinels
-    "SourceMark",
-    "TemplateNode",
-    "Omit",
-    "OMIT",
-    "UNSET",
-    "Var",
-    "Default",
-    "If",
-    "ForEach",
-    "Expr",
-    "Call",
-    "Pipe",
-    "IncludeRuntime",
-    "SetDefault",
-    "Python",
-    "PythonModule",
+    "safe_engine",
+    # One-shot rendering
+    "render_text",
+    "render_path",
+    "render_stream",
+    # Engine management
+    "get_default_engine",
+    "set_default_engine",
     # Errors
     "YdstError",
+    "RenderError",
     "TemplateLoadError",
     "TemplateValidationError",
-    "RenderError",
-    "MissingVariableError",
-    "RootOmitError",
-    "ExpressionError",
-    "FunctionNotFoundError",
-    "FunctionCallError",
-    "IncludeError",
-    "IncludeCycleError",
-    "PythonError",
-    "PythonEmitError",
-    # Includes
-    "IncludeResolver",
-    "FileIncludeResolver",
-    "IncludeResult",
     # Registry
     "FunctionRegistry",
     "DictFunctionRegistry",
-    "chain_registries",
-    "minimal_registry",
     "safe_registry",
-    "default_registry",
     "extended_registry",
+    # Includes
+    "FileIncludeResolver",
 ]
