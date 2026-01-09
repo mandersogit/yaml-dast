@@ -12,6 +12,8 @@ Usage:
 
 Commit Plan Format:
     repo: /optional/path/to/repo    # Optional: override repo path
+    tag: v1.0.0                      # Optional: create git tag after commits
+    tag_message: "Release v1.0.0"    # Optional: annotated tag message
     commits:
       - message: |
           type: short description
@@ -211,6 +213,16 @@ def _preview(
     _click.echo(f"=== Commit Plan: {plan_path.name} ===")
     _click.echo(f"Repository: {repo_path}")
     _click.echo(f"Commits: {len(plan.get('commits', []))}")
+
+    # Show tag info if present
+    tag_name = plan.get("tag")
+    tag_message = plan.get("tag_message")
+    if tag_name:
+        if tag_message:
+            _click.echo(f"Tag: {tag_name} (annotated: {tag_message!r})")
+        else:
+            _click.echo(f"Tag: {tag_name} (lightweight)")
+
     _click.echo()
 
     commits = plan.get("commits", [])
@@ -385,10 +397,24 @@ def _execute(
         _run_git(["commit", "-m", msg], repo_path, dry_run)
         _click.echo()
 
+    # Create tag if specified
+    tag_name = plan.get("tag")
+    tag_message = plan.get("tag_message")
+    if tag_name:
+        _click.echo(f">>> Creating tag: {tag_name}")
+        if tag_message:
+            _run_git(["tag", "-a", tag_name, "-m", tag_message], repo_path, dry_run)
+        else:
+            _run_git(["tag", tag_name], repo_path, dry_run)
+        _click.echo()
+
     _click.echo("=== Done ===")
     if not dry_run:
         commit_count = len(plan.get("commits", []))
         _run_git(["log", "--oneline", f"-{commit_count}"], repo_path, dry_run)
+        if tag_name:
+            _click.echo()
+            _run_git(["tag", "-l", tag_name], repo_path, dry_run)
 
 
 @_click.command()

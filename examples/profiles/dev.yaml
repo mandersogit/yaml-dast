@@ -1,0 +1,4 @@
+log_level: debug
+features:
+  experimental: true
+  tracing: true

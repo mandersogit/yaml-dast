@@ -1,0 +1,6 @@
+meta: !include includes/common.yaml
+
+service:
+  name: demo
+  owner: !expr "meta.owner"
+  labels: !expr "meta.labels"

@@ -1,0 +1,13 @@
+title: !var title
+
+slug: !pipe
+  - !var title
+  - !call {fn: slugify, kwargs: {max_len: 20}}
+
+payload_json: !pipe
+  -
+    title: !var title
+    slug: !pipe
+      - !var title
+      - !call {fn: slugify}
+  - !call {fn: json_dumps}

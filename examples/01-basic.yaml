@@ -1,0 +1,11 @@
+model: gpt-5
+params:
+  temperature: !var temperature
+  max_tokens: !expr "base_tokens + bonus_tokens"
+
+tools: !foreach
+  var: t
+  in: !var enabled_tools
+  template:
+    name: !expr "t"
+    enabled: true

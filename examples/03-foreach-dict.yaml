@@ -1,0 +1,8 @@
+users_by_id: !foreach
+  var: u
+  in: !var users
+  into: dict
+  key: !expr "u.id"
+  value:
+    name: !expr "u.name"
+    is_admin: !expr "u.role == 'admin'"

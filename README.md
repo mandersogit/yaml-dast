@@ -17,6 +17,11 @@ This is **data-structure templating** (not text templating): the output preserve
 - `!include` — **load-time include**: inlines another YAML file during parsing
 - `!include_rt` / `!include_runtime` — **render-time include**: includes and renders another YAML file during rendering
 
+## Documentation
+
+- Docs index: [`docs/README.md`](docs/README.md)
+- Examples: [`examples/README.md`](examples/README.md)
+
 ## Quick start
 
 ```python

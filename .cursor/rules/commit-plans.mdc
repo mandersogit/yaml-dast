@@ -20,6 +20,10 @@ This project uses YAML commit plans instead of direct git commits.
 Location: `workflow/commit-plans/YYYY-MM-DD-description.yaml`
 
 ```yaml
+repo: /optional/path/to/repo    # Optional: override repo path
+tag: v1.0.0                      # Optional: create git tag after commits
+tag_message: "Release v1.0.0"    # Optional: makes tag annotated
+
 commits:
   - message: |
       type: short description
@@ -28,6 +32,8 @@ commits:
     files:
       - path/to/file1.py
       - path/to/file2.py
+    deleted:                      # Optional: files to remove
+      - path/to/removed.py
 ```
 
 If a file needs changes across multiple logical commits, combine those changes into one commit or structure your work differently.
@@ -56,3 +62,6 @@ If a file needs changes across multiple logical commits, combine those changes i
 | Create commit plan YAML  | ✅ Yes                             |
 | Run preview (no execute) | ✅ Yes                             |
 | Run execute              | ❌ Only with explicit user request |
+| Add tag to plan          | ❌ Only with explicit user request |
+
+**Tags are releases** — never add `tag:` to a commit plan unless the user explicitly requests a tag/release.

@@ -1,0 +1,11 @@
+service:
+  name: demo
+  env: dev
+
+params:
+  temperature: 0.2
+  max_tokens: 500
+
+tools:
+  - name: search
+    enabled: true

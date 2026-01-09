@@ -1,0 +1,5 @@
+profile: !var profile
+
+settings: !include_rt
+  target: !expr "'profiles/' + profile + '.yaml'"
+  required: true

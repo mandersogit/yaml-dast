@@ -1,0 +1,6 @@
+params:
+  temperature: !var temperature
+
+tools:
+  - name: calc
+    enabled: true
