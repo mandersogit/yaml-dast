@@ -1,24 +1,14 @@
-import unittest
-from pathlib import Path
-import tempfile
+import pathlib as _pathlib
+import tempfile as _tempfile
+import unittest as _unittest
 
-from ydst import (
-    TemplateEngine,
-    FileIncludeResolver,
-    default_registry,
-    OMIT,
-    RenderError,
-    RootOmitError,
-    ExpressionError,
-    TemplateLoadError,
-)
-from ydst.render import RenderOptions
-from ydst.registry import chain_registries
+import ydst as _ydst
+import ydst.registry as _registry
 
 
-class TestYdstBasic(unittest.TestCase):
-    def test_var_and_if_and_omit(self):
-        eng = TemplateEngine()
+class TestYdstBasic(_unittest.TestCase):
+    def test_var_and_if_and_omit(self) -> None:
+        eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text(
             """
 a: 1
@@ -29,20 +19,20 @@ c: !if
   else: !omit
 """
         )
-        out = eng.render(tmpl, context={"x": 2}, registry=default_registry())
+        out = eng.render(tmpl, context={"x": 2}, registry=_ydst.default_registry())
         self.assertEqual(out, {"a": 1, "b": 2, "c": "yes"})
 
-        out2 = eng.render(tmpl, context={"x": 1}, registry=default_registry())
+        out2 = eng.render(tmpl, context={"x": 1}, registry=_ydst.default_registry())
         self.assertEqual(out2, {"a": 1, "b": 1})
 
-    def test_root_omit_is_error(self):
-        eng = TemplateEngine()
+    def test_root_omit_is_error(self) -> None:
+        eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text("!omit")
-        with self.assertRaises(RootOmitError):
-            eng.render(tmpl, context={}, registry=default_registry())
+        with self.assertRaises(_ydst.RootOmitError):
+            eng.render(tmpl, context={}, registry=_ydst.default_registry())
 
-    def test_foreach_list(self):
-        eng = TemplateEngine()
+    def test_foreach_list(self) -> None:
+        eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text(
             """
 items: !foreach
@@ -51,11 +41,11 @@ items: !foreach
   template: !expr "t * 2"
 """
         )
-        out = eng.render(tmpl, context={"xs": [1, 2, 3]}, registry=default_registry())
+        out = eng.render(tmpl, context={"xs": [1, 2, 3]}, registry=_ydst.default_registry())
         self.assertEqual(out["items"], [2, 4, 6])
 
-    def test_foreach_dict(self):
-        eng = TemplateEngine()
+    def test_foreach_dict(self) -> None:
+        eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text(
             """
 m: !foreach
@@ -66,11 +56,11 @@ m: !foreach
   value: !expr "t * t"
 """
         )
-        out = eng.render(tmpl, context={"xs": [1, 2, 3]}, registry=default_registry())
+        out = eng.render(tmpl, context={"xs": [1, 2, 3]}, registry=_ydst.default_registry())
         self.assertEqual(out["m"], {1: 1, 2: 4, 3: 9})
 
-    def test_foreach_allows_explicit_null_template_key_value(self):
-        eng = TemplateEngine()
+    def test_foreach_allows_explicit_null_template_key_value(self) -> None:
+        eng = _ydst.TemplateEngine()
 
         tmpl_list = eng.load_template_text(
             """
@@ -102,8 +92,8 @@ x: !foreach
         )
         self.assertEqual(eng.render(tmpl_dict), {"x": {None: None}})
 
-    def test_call_and_pipe(self):
-        eng = TemplateEngine()
+    def test_call_and_pipe(self) -> None:
+        eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text(
             """
 slug: !pipe
@@ -114,36 +104,36 @@ slug: !pipe
         )
 
         # Custom registry for truncate
-        reg = default_registry()
+        reg = _ydst.default_registry()
         reg.functions["truncate"] = lambda s, max_len=5: str(s)[:max_len]
 
         out = eng.render(tmpl, context={"title": "Hello, World"}, registry=reg)
         self.assertEqual(out["slug"], "hello")
 
-    def test_load_time_include(self):
-        with tempfile.TemporaryDirectory() as td:
-            td = Path(td)
-            (td / "a.yaml").write_text("x: 1\n", encoding="utf-8")
-            (td / "b.yaml").write_text("y: !include a.yaml\n", encoding="utf-8")
+    def test_load_time_include(self) -> None:
+        with _tempfile.TemporaryDirectory() as td:
+            td_path = _pathlib.Path(td)
+            (td_path / "a.yaml").write_text("x: 1\n", encoding="utf-8")
+            (td_path / "b.yaml").write_text("y: !include a.yaml\n", encoding="utf-8")
 
-            eng = TemplateEngine(include_resolver=FileIncludeResolver(search_paths=[td]))
-            tmpl = eng.load_template_file(td / "b.yaml")
+            eng = _ydst.TemplateEngine(include_resolver=_ydst.FileIncludeResolver(search_paths=[td_path]))
+            tmpl = eng.load_template_file(td_path / "b.yaml")
             out = eng.render(tmpl)
             self.assertEqual(out, {"y": {"x": 1}})
 
-    def test_runtime_include(self):
-        with tempfile.TemporaryDirectory() as td:
-            td = Path(td)
-            (td / "a.yaml").write_text("x: !var v\n", encoding="utf-8")
-            (td / "b.yaml").write_text("y: !include_rt a.yaml\n", encoding="utf-8")
+    def test_runtime_include(self) -> None:
+        with _tempfile.TemporaryDirectory() as td:
+            td_path = _pathlib.Path(td)
+            (td_path / "a.yaml").write_text("x: !var v\n", encoding="utf-8")
+            (td_path / "b.yaml").write_text("y: !include_rt a.yaml\n", encoding="utf-8")
 
-            eng = TemplateEngine(include_resolver=FileIncludeResolver(search_paths=[td]))
-            tmpl = eng.load_template_file(td / "b.yaml")
+            eng = _ydst.TemplateEngine(include_resolver=_ydst.FileIncludeResolver(search_paths=[td_path]))
+            tmpl = eng.load_template_file(td_path / "b.yaml")
             out = eng.render(tmpl, context={"v": 42})
             self.assertEqual(out, {"y": {"x": 42}})
 
-    def test_dict_key_conflict_policy(self):
-        eng = TemplateEngine()
+    def test_dict_key_conflict_policy(self) -> None:
+        eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text("""m: {a: 1, a: 2}\n""")  # YAML parser will likely keep last anyway
         # For deterministic test, force conflict via foreach dict:
         tmpl = eng.load_template_text(
@@ -157,101 +147,101 @@ m: !foreach
 """
         )
         # strict with last-wins
-        out = eng.render(tmpl, registry=default_registry(), options=RenderOptions(dict_key_conflict="last"))
+        out = eng.render(tmpl, registry=_ydst.default_registry(), options=_ydst.RenderOptions(dict_key_conflict="last"))
         self.assertEqual(out["m"], {1: 1})
 
         # strict with error
-        with self.assertRaises(RenderError) as cm:
-            eng.render(tmpl, registry=default_registry(), options=RenderOptions(dict_key_conflict="error"))
+        with self.assertRaises(_ydst.RenderError) as cm:
+            eng.render(tmpl, registry=_ydst.default_registry(), options=_ydst.RenderOptions(dict_key_conflict="error"))
 
         # Ensure the error path includes the iteration index that caused the conflict.
         self.assertIn("path=$.m[1].key", str(cm.exception))
 
-    def test_expr_calls_with_chained_registry(self):
-        eng = TemplateEngine()
+    def test_expr_calls_with_chained_registry(self) -> None:
+        eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text("n: !expr \"len(xs)\"\n")
 
-        extra = default_registry()
+        extra = _ydst.default_registry()
         extra.functions = {"noop": lambda x: x}
 
-        reg = chain_registries(extra, default_registry())
+        reg = _registry.chain_registries(extra, _ydst.default_registry())
         out = eng.render(tmpl, context={"xs": [1, 2, 3]}, registry=reg)
         self.assertEqual(out["n"], 3)
 
-    def test_expr_calls_with_get_only_registry(self):
+    def test_expr_calls_with_get_only_registry(self) -> None:
         class _GetOnly:
-            def __init__(self, funcs):
+            def __init__(self, funcs: dict) -> None:
                 self._funcs = dict(funcs)
 
             def get(self, name: str):
                 return self._funcs.get(name)
 
-        eng = TemplateEngine()
+        eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text("n: !expr \"len(xs)\"\n")
         reg = _GetOnly({"len": len})
         out = eng.render(tmpl, context={"xs": [1, 2, 3]}, registry=reg)
         self.assertEqual(out["n"], 3)
 
-    def test_expr_dict_unpacking_rejected(self):
-        eng = TemplateEngine()
+    def test_expr_dict_unpacking_rejected(self) -> None:
+        eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text("x: !expr \"{**d}\"\n")
-        with self.assertRaises(ExpressionError):
-            eng.render(tmpl, context={"d": {"a": 1}}, registry=default_registry())
+        with self.assertRaises(_ydst.ExpressionError):
+            eng.render(tmpl, context={"d": {"a": 1}}, registry=_ydst.default_registry())
 
-    def test_expr_private_attributes_rejected(self):
-        eng = TemplateEngine()
+    def test_expr_private_attributes_rejected(self) -> None:
+        eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text("x: !expr \"obj.__class__.__name__\"\n")
-        with self.assertRaises(ExpressionError):
-            eng.render(tmpl, context={"obj": object()}, registry=default_registry())
+        with self.assertRaises(_ydst.ExpressionError):
+            eng.render(tmpl, context={"obj": object()}, registry=_ydst.default_registry())
 
         # Opt-in: allow private/dunder attribute access.
         out = eng.render(
             tmpl,
             context={"obj": object()},
-            registry=default_registry(),
-            options=RenderOptions(allow_private_attributes_in_expr=True),
+            registry=_ydst.default_registry(),
+            options=_ydst.RenderOptions(allow_private_attributes_in_expr=True),
         )
         self.assertEqual(out["x"], "object")
 
-    def test_expr_subscripts_policy_toggle(self):
-        eng = TemplateEngine()
+    def test_expr_subscripts_policy_toggle(self) -> None:
+        eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text("x: !expr \"d['a']\"\n")
 
-        with self.assertRaises(ExpressionError):
+        with self.assertRaises(_ydst.ExpressionError):
             eng.render(
                 tmpl,
                 context={"d": {"a": 1}},
-                registry=default_registry(),
-                options=RenderOptions(allow_subscripts_in_expr=False),
+                registry=_ydst.default_registry(),
+                options=_ydst.RenderOptions(allow_subscripts_in_expr=False),
             )
 
-        out = eng.render(tmpl, context={"d": {"a": 1}}, registry=default_registry())
+        out = eng.render(tmpl, context={"d": {"a": 1}}, registry=_ydst.default_registry())
         self.assertEqual(out, {"x": 1})
 
-    def test_safe_mode_disables_expr_calls(self):
-        eng = TemplateEngine()
+    def test_safe_mode_disables_expr_calls(self) -> None:
+        eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text("n: !expr \"len(xs)\"\n")
-        with self.assertRaises(ExpressionError):
+        with self.assertRaises(_ydst.ExpressionError):
             eng.render(
                 tmpl,
                 context={"xs": [1, 2, 3]},
-                registry=default_registry(),
-                options=RenderOptions(mode="expr_safe"),
+                registry=_ydst.default_registry(),
+                options=_ydst.RenderOptions(mode="expr_safe"),
             )
 
-    def test_max_depth_applies_to_containers(self):
-        eng = TemplateEngine()
+    def test_max_depth_applies_to_containers(self) -> None:
+        eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text("""
 a:
   b:
     c:
       d: 1
 """)
-        with self.assertRaises(RenderError):
-            eng.render(tmpl, options=RenderOptions(max_depth=3))
+        with self.assertRaises(_ydst.RenderError):
+            eng.render(tmpl, options=_ydst.RenderOptions(max_depth=3))
 
-    def test_default_omit_for_var_expr_include_rt(self):
-        eng = TemplateEngine()
+    def test_default_omit_for_var_expr_include_rt(self) -> None:
+        eng = _ydst.TemplateEngine()
 
         tmpl_var = eng.load_template_text("""
 a: !var
@@ -260,7 +250,7 @@ a: !var
   default: !omit
 b: 1
 """)
-        out_var = eng.render(tmpl_var, registry=default_registry())
+        out_var = eng.render(tmpl_var, registry=_ydst.default_registry())
         self.assertEqual(out_var, {"b": 1})
 
         tmpl_expr = eng.load_template_text("""
@@ -270,12 +260,12 @@ a: !expr
   default: !omit
 b: 1
 """)
-        out_expr = eng.render(tmpl_expr, registry=default_registry())
+        out_expr = eng.render(tmpl_expr, registry=_ydst.default_registry())
         self.assertEqual(out_expr, {"b": 1})
 
-        with tempfile.TemporaryDirectory() as td:
-            td = Path(td)
-            eng2 = TemplateEngine(include_resolver=FileIncludeResolver(search_paths=[td]))
+        with _tempfile.TemporaryDirectory() as td:
+            td_path = _pathlib.Path(td)
+            eng2 = _ydst.TemplateEngine(include_resolver=_ydst.FileIncludeResolver(search_paths=[td_path]))
             tmpl_inc = eng2.load_template_text("""
 a: !include_rt
   target: missing.yaml
@@ -283,23 +273,23 @@ a: !include_rt
   default: !omit
 b: 1
 """)
-            out_inc = eng2.render(tmpl_inc, registry=default_registry())
+            out_inc = eng2.render(tmpl_inc, registry=_ydst.default_registry())
             self.assertEqual(out_inc, {"b": 1})
 
-    def test_empty_include_file_is_not_missing(self):
-        with tempfile.TemporaryDirectory() as td:
-            td = Path(td)
-            (td / "empty.yaml").write_text("", encoding="utf-8")
-            (td / "main.yaml").write_text("x: !include empty.yaml\n", encoding="utf-8")
+    def test_empty_include_file_is_not_missing(self) -> None:
+        with _tempfile.TemporaryDirectory() as td:
+            td_path = _pathlib.Path(td)
+            (td_path / "empty.yaml").write_text("", encoding="utf-8")
+            (td_path / "main.yaml").write_text("x: !include empty.yaml\n", encoding="utf-8")
 
-            (td / "rt.yaml").write_text("x: !include_rt empty.yaml\n", encoding="utf-8")
+            (td_path / "rt.yaml").write_text("x: !include_rt empty.yaml\n", encoding="utf-8")
 
-            eng = TemplateEngine(include_resolver=FileIncludeResolver(search_paths=[td]))
-            tmpl = eng.load_template_file(td / "main.yaml")
+            eng = _ydst.TemplateEngine(include_resolver=_ydst.FileIncludeResolver(search_paths=[td_path]))
+            tmpl = eng.load_template_file(td_path / "main.yaml")
             out = eng.render(tmpl)
             self.assertEqual(out, {"x": None})
 
-            tmpl_rt = eng.load_template_file(td / "rt.yaml")
+            tmpl_rt = eng.load_template_file(td_path / "rt.yaml")
             out_rt = eng.render(tmpl_rt)
             self.assertEqual(out_rt, {"x": None})
 
@@ -309,7 +299,7 @@ b: 1
 
 
     def test_pipe_unknown_string_stage_default_errors_but_can_be_literal(self) -> None:
-        eng = TemplateEngine()
+        eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text(
             """x: !pipe
   - 1
@@ -318,15 +308,15 @@ b: 1
         )
 
         # Default: strict pipe stages => unknown string stage is an error.
-        with self.assertRaises(RenderError):
-            eng.render(tmpl, registry=default_registry())
+        with self.assertRaises(_ydst.RenderError):
+            eng.render(tmpl, registry=_ydst.default_registry())
 
         # Opt-out: allow unknown string stages to be treated as literal values.
-        out = eng.render(tmpl, registry=default_registry(), options=RenderOptions(strict_pipe_stages=False))
+        out = eng.render(tmpl, registry=_ydst.default_registry(), options=_ydst.RenderOptions(strict_pipe_stages=False))
         self.assertEqual(out, {"x": "not_a_function"})
 
     def test_pipe_callable_stage_requires_opt_in(self) -> None:
-        eng = TemplateEngine()
+        eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text(
             """x: !pipe
   - 1
@@ -335,15 +325,15 @@ b: 1
         )
 
         # Default: callable stages are disabled.
-        with self.assertRaises(RenderError):
+        with self.assertRaises(_ydst.RenderError):
             eng.render(tmpl, context={"f": lambda x: x + 1})
 
         # Opt-in: allow callable stages.
-        out = eng.render(tmpl, context={"f": lambda x: x + 1}, options=RenderOptions(allow_callable_pipe_stages=True))
+        out = eng.render(tmpl, context={"f": lambda x: x + 1}, options=_ydst.RenderOptions(allow_callable_pipe_stages=True))
         self.assertEqual(out, {"x": 2})
 
     def test_load_time_include_required_false_defaults_to_none(self) -> None:
-        eng = TemplateEngine()  # no include_resolver
+        eng = _ydst.TemplateEngine()  # no include_resolver
         tmpl = eng.load_template_text(
             """x: !include
   target: missing.yaml
@@ -355,13 +345,14 @@ b: 1
         self.assertEqual(out, {"x": None})
 
     def test_yaml_parse_error_preserves_mark(self) -> None:
-        eng = TemplateEngine()
-        with self.assertRaises(TemplateLoadError) as cm:
+        eng = _ydst.TemplateEngine()
+        with self.assertRaises(_ydst.TemplateLoadError) as cm:
             eng.load_template_text("a: [1, 2\n")  # missing closing bracket
 
         e = cm.exception
         self.assertIsNotNone(e.ctx)
         self.assertIsNotNone(e.ctx.mark)
+        assert e.ctx.mark is not None  # type narrowing for mypy
         # Depending on the YAML parser error type, line/column should be present.
         self.assertIsInstance(e.ctx.mark.line, int)
         self.assertIsInstance(e.ctx.mark.column, int)
@@ -371,7 +362,7 @@ b: 1
 
 
     def test_omit_is_falsy_in_if(self) -> None:
-        eng = TemplateEngine()
+        eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text("""
 !if
   test: !omit
@@ -382,7 +373,7 @@ b: 1
         self.assertEqual(out, "NO")
 
     def test_omit_is_falsy_in_foreach_when(self) -> None:
-        eng = TemplateEngine()
+        eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text("""
 !foreach
   in: [1, 2, 3]
@@ -393,35 +384,36 @@ b: 1
         self.assertEqual(out, [])
 
     def test_loader_validates_boolean_fields(self) -> None:
-        eng = TemplateEngine()
-        with self.assertRaises(TemplateLoadError):
+        eng = _ydst.TemplateEngine()
+        with self.assertRaises(_ydst.TemplateLoadError):
             eng.load_template_text('!var {name: x, required: "false"}')
 
-        with self.assertRaises(TemplateLoadError):
+        with self.assertRaises(_ydst.TemplateLoadError):
             eng.load_template_text('!include {timing: load, target: 123}')
 
     def test_foreach_var_must_be_non_empty_string(self) -> None:
-        eng = TemplateEngine()
-        with self.assertRaises(TemplateLoadError):
+        eng = _ydst.TemplateEngine()
+        with self.assertRaises(_ydst.TemplateLoadError):
             eng.load_template_text('!foreach {in: [1], var: "", template: {x: 1}}')
 
     def test_load_time_include_cycle_is_template_load_error(self) -> None:
-        with tempfile.TemporaryDirectory() as td:
-            p = Path(td)
+        with _tempfile.TemporaryDirectory() as td:
+            p = _pathlib.Path(td)
             (p / 'a.yaml').write_text('!include b.yaml', encoding='utf-8')
             (p / 'b.yaml').write_text('!include a.yaml', encoding='utf-8')
 
-            resolver = FileIncludeResolver(search_paths=[p])
-            eng = TemplateEngine(include_resolver=resolver)
+            resolver = _ydst.FileIncludeResolver(search_paths=[p])
+            eng = _ydst.TemplateEngine(include_resolver=resolver)
 
-            with self.assertRaises(TemplateLoadError):
+            with self.assertRaises(_ydst.TemplateLoadError):
                 eng.load_template_file(str(p / 'a.yaml'))
 
     def test_pipe_unknown_stage_strict_errors(self) -> None:
-        eng = TemplateEngine()
+        eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text('!pipe [1, unknown]')
 
-        with self.assertRaises(RenderError):
-            eng.render(tmpl, registry=default_registry(), options=RenderOptions(strict_pipe_stages=True))
+        with self.assertRaises(_ydst.RenderError):
+            eng.render(tmpl, registry=_ydst.default_registry(), options=_ydst.RenderOptions(strict_pipe_stages=True))
+
 if __name__ == "__main__":
-    unittest.main()
+    _unittest.main()

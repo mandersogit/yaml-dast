@@ -104,7 +104,7 @@ def safe_engine(
 
     return engine_mod.TemplateEngine(
         include_resolver=include_resolver,
-        base_loader=_yaml.SafeLoader,
+        base_loader=_yaml.SafeLoader,  # type: ignore[arg-type]
         max_include_depth=max_include_depth,
         allow_load_time_includes=allow_load_time_includes,
     )

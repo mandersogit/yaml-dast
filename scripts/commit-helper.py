@@ -25,9 +25,18 @@ Commit Plan Format:
 
 # ruff: noqa: E402 (imports not at top - polyglot script)
 
-import pathlib as _pathlib
-import subprocess as _subprocess
 import sys as _sys
+
+if _sys.version_info < (3, 11):
+    _sys.exit(
+        f"Error: commit-helper requires Python 3.11+ (you have {_sys.version})\n"
+        f"Run with: ./local.venv/bin/python scripts/commit-helper.py plan.yaml"
+    )
+
+import pathlib as _pathlib
+import re as _re
+import subprocess as _subprocess
+import tomllib as _tomllib
 import typing as _typing
 
 import click as _click
@@ -150,10 +159,52 @@ def _find_duplicate_files(
     return {f: commits for f, commits in file_commits.items() if len(commits) > 1}
 
 
+def _validate_tag_version(tag: str, repo_path: _pathlib.Path) -> str | None:
+    """Check that a semver tag matches pyproject.toml version.
+
+    Args:
+        tag: The tag name (e.g., "v0.3.1").
+        repo_path: Path to the repository root.
+
+    Returns:
+        Error message if mismatch, None if OK or not applicable.
+    """
+    # Only validate semver tags (vX.Y.Z)
+    match = _re.match(r"^v(\d+\.\d+\.\d+)$", tag)
+    if not match:
+        return None  # Not a semver tag, skip validation
+
+    tag_version = match.group(1)
+    pyproject = repo_path / "pyproject.toml"
+    if not pyproject.exists():
+        return None  # No pyproject.toml, skip
+
+    try:
+        with pyproject.open("rb") as f:
+            data = _tomllib.load(f)
+    except Exception as e:
+        return f"Failed to parse pyproject.toml: {e}"
+
+    project_version = data.get("project", {}).get("version")
+    if project_version is None:
+        return None  # No version in pyproject.toml, skip
+
+    if project_version != tag_version:
+        return (
+            f"Version mismatch: tag '{tag}' implies version {tag_version}, "
+            f"but pyproject.toml has version {project_version!r}"
+        )
+
+    return None
+
+
 def _load_plan(plan_path: _pathlib.Path) -> dict[str, _typing.Any]:
     """Load commit plan from YAML file."""
     with plan_path.open() as f:
-        return _yaml.safe_load(f)
+        result = _yaml.safe_load(f)
+    if not isinstance(result, dict):
+        raise ValueError(f"Commit plan must be a YAML mapping, got {type(result).__name__}")
+    return _typing.cast(dict[str, _typing.Any], result)
 
 
 def _get_repo_path(
@@ -224,6 +275,13 @@ def _preview(
             _click.echo(f"Tag: {tag_name} (lightweight)")
 
     _click.echo()
+
+    # Validate tag version matches pyproject.toml
+    if tag_name:
+        version_error = _validate_tag_version(tag_name, repo_path)
+        if version_error:
+            _click.echo(f"ERROR: {version_error}", err=True)
+            return False
 
     commits = plan.get("commits", [])
 
@@ -320,6 +378,14 @@ def _execute(
     if dry_run:
         _click.echo("(DRY RUN - no changes will be made)")
     _click.echo()
+
+    # Validate tag version matches pyproject.toml
+    tag_name = plan.get("tag")
+    if tag_name:
+        version_error = _validate_tag_version(tag_name, repo_path)
+        if version_error:
+            _click.echo(f"ERROR: {version_error}", err=True)
+            _sys.exit(1)
 
     # Check for pre-staged files (abort if found)
     if not dry_run:

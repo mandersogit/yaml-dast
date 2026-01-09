@@ -47,6 +47,14 @@ PythonError = errors.PythonError
 PythonEmitError = errors.PythonEmitError
 
 
+class _PythonEmitSignal(BaseException):
+    """Internal signal used by !python and !python_module to emit a value."""
+
+    def __init__(self, value: _typing.Any = None) -> None:
+        self.value = value
+        super().__init__()
+
+
 @_dataclasses.dataclass(frozen=True, slots=True)
 class TraceEvent:
     """A trace event emitted when rendering a node."""
@@ -321,9 +329,8 @@ class _PathGuard:
         self._ctx.path.append(self._seg)
         return self._ctx
 
-    def __exit__(self, exc_type, exc, tb) -> bool:
+    def __exit__(self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: _typing.Any) -> None:
         self._ctx.path.pop()
-        return False
 
 
 def _path(ctx: RenderContext, seg: _typing.Any) -> _PathGuard:
@@ -897,6 +904,8 @@ def _render_include_rt(node: IncludeRuntime, ctx: RenderContext) -> _typing.Any:
             ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="IncludeRuntime"),
         )
 
+    # We already checked that include_resolver is not None above.
+    assert ctx.include_resolver is not None
     res = ctx.include_resolver.resolve(target, from_source=(node.mark.source if node.mark else None))
     if res.content is None:
         if node.required:
@@ -1079,8 +1088,8 @@ def _render_python(node: Python, ctx: RenderContext) -> _typing.Any:
     g.setdefault("UNSET", UNSET)
 
     # Locals: snapshot of current scope + helpers (does not persist back into module globals unless `global` is used).
-    l: dict[str, _typing.Any] = dict(ctx.scope)
-    l.update(
+    local_vars: dict[str, _typing.Any] = dict(ctx.scope)
+    local_vars.update(
         {
             "emit": emit,
             "ctx": ctx,
@@ -1090,10 +1099,10 @@ def _render_python(node: Python, ctx: RenderContext) -> _typing.Any:
         }
     )
     if ctx.registry is not None:
-        l["registry"] = ctx.registry
+        local_vars["registry"] = ctx.registry
 
     try:
-        exec(code_obj, g, l)
+        exec(code_obj, g, local_vars)
     except _PythonEmitSignal as e:
         return e.value
     except Exception as e:

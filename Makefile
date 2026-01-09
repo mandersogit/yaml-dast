@@ -8,12 +8,10 @@
 #   make all        - Run lint, typecheck, and tests
 #   make clean      - Remove build artifacts
 #
-# Requires PYTHON_EXE environment variable to be set.
+# Set PYTHON_EXE to override the Python interpreter (defaults to local.venv).
 
-# Require PYTHON_EXE to be set
-ifndef PYTHON_EXE
-$(error PYTHON_EXE is not set. Set it to your Python interpreter path, e.g.: export PYTHON_EXE=/path/to/python)
-endif
+# Default to local.venv if PYTHON_EXE not set
+PYTHON_EXE ?= $(CURDIR)/local.venv/bin/python
 
 .PHONY: test test-cov lint typecheck all clean help
 
@@ -28,8 +26,8 @@ help:
 	@echo "  make all        Run lint, typecheck, and tests"
 	@echo "  make clean      Remove build artifacts"
 	@echo ""
-	@echo "Requires: PYTHON_EXE environment variable"
-	@echo "Current:  $(PYTHON_EXE)"
+	@echo "Python:   $(PYTHON_EXE)"
+	@echo "Override: PYTHON_EXE=/path/to/python make test"
 
 # Run all tests
 test:
@@ -44,11 +42,11 @@ test-cov:
 
 # Lint with ruff
 lint:
-	$(PYTHON_EXE) -m ruff check ydst/ tests/
+	$(PYTHON_EXE) -m ruff check ydst/ tests/ scripts/
 
 # Type check with mypy
 typecheck:
-	$(PYTHON_EXE) -m mypy ydst/ --ignore-missing-imports
+	$(PYTHON_EXE) -m mypy ydst/ tests/ scripts/ --ignore-missing-imports
 
 # Run all checks
 all: lint typecheck test

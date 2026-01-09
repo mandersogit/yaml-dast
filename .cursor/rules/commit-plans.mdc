@@ -45,14 +45,14 @@ If a file needs changes across multiple logical commits, combine those changes i
 ## Correct Workflow
 
 1. **Create the plan** - Write `workflow/commit-plans/YYYY-MM-DD-description.yaml`
-2. **Preview** - `./scripts/commit-helper plan.yaml` (validates files exist)
-3. **Execute** - `./scripts/commit-helper plan.yaml --execute`
+2. **Preview** - `./scripts/commit-helper.py plan.yaml` (validates files exist)
+3. **Execute** - `./scripts/commit-helper.py plan.yaml --execute`
 
 ## Using the Script
 
 ```bash
-./scripts/commit-helper plan.yaml             # Preview (safe, always OK)
-./scripts/commit-helper plan.yaml --execute   # Execute commits
+./scripts/commit-helper.py plan.yaml             # Preview (safe, always OK)
+./scripts/commit-helper.py plan.yaml --execute   # Execute commits
 ```
 
 ## What You Can Do Autonomously

@@ -36,7 +36,7 @@ class TemplateEngine:
         *,
         include_resolver: include.IncludeResolver | None = None,
         allow_load_time_includes: bool = True,
-        base_loader: type[_yaml.Loader] = _yaml.SafeLoader,
+        base_loader: type[_yaml.Loader] = _yaml.SafeLoader,  # type: ignore[assignment]
         max_include_depth: int | None = None,
     ):
         self.include_resolver = include_resolver

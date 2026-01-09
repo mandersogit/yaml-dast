@@ -51,7 +51,7 @@ def _make_engine(args: _argparse.Namespace) -> engine_mod.TemplateEngine:
             cache_max=256,
         )
 
-    base_loader = _yaml.SafeLoader
+    base_loader: type[_yaml.Loader] = _yaml.SafeLoader  # type: ignore[assignment]
     if args.full_loader:
         base_loader = _yaml.FullLoader  # type: ignore[assignment]
 

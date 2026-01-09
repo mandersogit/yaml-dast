@@ -270,34 +270,35 @@ class ExpressionEvaluator:
         if isinstance(node, _ast.Dict):
             if any(k is None for k in node.keys):
                 raise ValueError("Dict unpacking (**mapping) is not supported")
-            return {self._eval_node(k, env): self._eval_node(v, env) for k, v in zip(node.keys, node.values)}
+            # All keys are non-None after the check above.
+            return {self._eval_node(k, env): self._eval_node(v, env) for k, v in zip(node.keys, node.values) if k is not None}
         if isinstance(node, _ast.UnaryOp):
-            op = _UNARYOPS[type(node.op)]
-            return op(self._eval_node(node.operand, env))
+            unary_op = _UNARYOPS[type(node.op)]
+            return unary_op(self._eval_node(node.operand, env))
         if isinstance(node, _ast.BinOp):
-            op = _BINOPS[type(node.op)]
-            return op(self._eval_node(node.left, env), self._eval_node(node.right, env))
+            bin_op = _BINOPS[type(node.op)]
+            return bin_op(self._eval_node(node.left, env), self._eval_node(node.right, env))
         if isinstance(node, _ast.BoolOp):
             if isinstance(node.op, _ast.And):
-                val: _typing.Any = False
+                and_val: _typing.Any = False
                 for v in node.values:
-                    val = self._eval_node(v, env)
-                    if not val:
-                        return val
-                return val
+                    and_val = self._eval_node(v, env)
+                    if not and_val:
+                        return and_val
+                return and_val
             if isinstance(node.op, _ast.Or):
-                val: _typing.Any = False
+                or_val: _typing.Any = False
                 for v in node.values:
-                    val = self._eval_node(v, env)
-                    if val:
-                        return val
-                return val
+                    or_val = self._eval_node(v, env)
+                    if or_val:
+                        return or_val
+                return or_val
         if isinstance(node, _ast.Compare):
             left = self._eval_node(node.left, env)
-            for op, comp in zip(node.ops, node.comparators):
+            for cmp_op, comp in zip(node.ops, node.comparators):
                 right = self._eval_node(comp, env)
-                fn = _CMP[type(op)]
-                if not fn(left, right):
+                cmp_fn = _CMP[type(cmp_op)]
+                if not cmp_fn(left, right):
                     return False
                 left = right
             return True
@@ -329,25 +330,25 @@ class ExpressionEvaluator:
 
             # Direct name calls (whitelisted)
             if isinstance(node.func, _ast.Name):
-                name = node.func.id
-                fn = self._resolve_function(name)
-                if fn is None:
-                    raise PermissionError(f"Function '{name}' is not allowed")
+                func_name = node.func.id
+                resolved_fn = self._resolve_function(func_name)
+                if resolved_fn is None:
+                    raise PermissionError(f"Function '{func_name}' is not allowed")
 
-                args = [self._eval_node(a, env) for a in node.args]
-                kwargs = {kw.arg: self._eval_node(kw.value, env) for kw in node.keywords if kw.arg is not None}
-                return fn(*args, **kwargs)
+                call_args = [self._eval_node(a, env) for a in node.args]
+                call_kwargs = {kw.arg: self._eval_node(kw.value, env) for kw in node.keywords if kw.arg is not None}
+                return resolved_fn(*call_args, **call_kwargs)
 
             # Method calls (explicitly gated)
             if isinstance(node.func, _ast.Attribute):
                 if not self.policy.allow_method_calls:
                     raise PermissionError("Method calls are not allowed")
-                fn = self._eval_node(node.func, env)
-                if not callable(fn):
+                method_fn = self._eval_node(node.func, env)
+                if not callable(method_fn):
                     raise TypeError(f"Attribute is not callable: {node.func.attr}")
-                args = [self._eval_node(a, env) for a in node.args]
-                kwargs = {kw.arg: self._eval_node(kw.value, env) for kw in node.keywords if kw.arg is not None}
-                return fn(*args, **kwargs)
+                method_args = [self._eval_node(a, env) for a in node.args]
+                method_kwargs = {kw.arg: self._eval_node(kw.value, env) for kw in node.keywords if kw.arg is not None}
+                return method_fn(*method_args, **method_kwargs)
 
             raise ValueError("Unsupported call form")
 

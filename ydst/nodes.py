@@ -28,7 +28,7 @@ class TemplateNode:
 
     # Important: do not allow TemplateNode objects to become usable as dict keys.
     # ydst intentionally forbids templated keys in mappings.
-    __hash__ = None
+    __hash__ = None  # type: ignore[assignment]
 
 
 def iter_template_node_items(node: TemplateNode) -> _abc.Iterator[tuple[str, _typing.Any]]:
@@ -45,7 +45,7 @@ def iter_template_node_items(node: TemplateNode) -> _abc.Iterator[tuple[str, _ty
 class Omit(TemplateNode):
     """A sentinel node that removes a key or list item from the rendered output."""
 
-    __hash__ = None
+    __hash__ = None  # type: ignore[assignment]
 
     def __bool__(self) -> bool:  # pragma: no cover
         # Treat OMIT as falsy so it behaves naturally in conditionals (e.g. !if, !foreach when).
@@ -80,7 +80,7 @@ class Var(TemplateNode):
       - if the variable is missing and `default` is OMIT / !omit, the key/item is omitted
     """
 
-    __hash__ = None
+    __hash__ = None  # type: ignore[assignment]
 
     name: str = ""
     default: _typing.Any = _dataclasses.field(default_factory=lambda: UNSET)
@@ -109,7 +109,7 @@ class Default(TemplateNode):
     This is designed for ergonomic composition; it is not an error-handling sandbox.
     """
 
-    __hash__ = None
+    __hash__ = None  # type: ignore[assignment]
 
     value: _typing.Any = None
     default: _typing.Any = _dataclasses.field(default_factory=lambda: UNSET)
@@ -127,7 +127,7 @@ class If(TemplateNode):
     If `else` is omitted, it defaults to !omit.
     """
 
-    __hash__ = None
+    __hash__ = None  # type: ignore[assignment]
 
     test: _typing.Any = None
     then: _typing.Any = None
@@ -148,7 +148,7 @@ class ForEach(TemplateNode):
       !foreach {var: x, in: <template>, into: set, template: <template>}
     """
 
-    __hash__ = None
+    __hash__ = None  # type: ignore[assignment]
 
     var: str = "item"
     in_: _typing.Any = None
@@ -183,7 +183,7 @@ class Expr(TemplateNode):
       - if `default` is OMIT / !omit, the key/item is omitted
     """
 
-    __hash__ = None
+    __hash__ = None  # type: ignore[assignment]
 
     expr: str = ""
     strict: bool = True
@@ -201,7 +201,7 @@ class Call(TemplateNode):
     `fn` may itself be templated; it is rendered to a string at runtime.
     """
 
-    __hash__ = None
+    __hash__ = None  # type: ignore[assignment]
 
     fn: _typing.Any = ""
     args: list[_typing.Any] = _dataclasses.field(default_factory=list)
@@ -234,7 +234,7 @@ class Pipe(TemplateNode):
       Enable this with `RenderOptions(allow_callable_pipe_stages=True)` if you need it.
     """
 
-    __hash__ = None
+    __hash__ = None  # type: ignore[assignment]
 
     steps: list[_typing.Any] = _dataclasses.field(default_factory=list)
 
@@ -250,7 +250,7 @@ class IncludeRuntime(TemplateNode):
     The `target` is rendered at runtime to a string and resolved via an IncludeResolver.
     """
 
-    __hash__ = None
+    __hash__ = None  # type: ignore[assignment]
 
     target: _typing.Any = ""
     required: bool = True
@@ -278,7 +278,7 @@ class SetDefault(TemplateNode):
     This tag is disabled by default; enable it with `RenderOptions(allow_setdefault=True)`.
     """
 
-    __hash__ = None
+    __hash__ = None  # type: ignore[assignment]
 
     defaults: dict[str, _typing.Any] = _dataclasses.field(default_factory=dict)
 
@@ -300,7 +300,7 @@ class Python(TemplateNode):
     This tag is disabled by default; enable it with `RenderOptions(allow_python=True)`.
     """
 
-    __hash__ = None
+    __hash__ = None  # type: ignore[assignment]
 
     code: str = ""
     strict_emit: bool | None = None
@@ -323,6 +323,6 @@ class PythonModule(TemplateNode):
     This tag is disabled by default; enable it with `RenderOptions(allow_python_module=True)`.
     """
 
-    __hash__ = None
+    __hash__ = None  # type: ignore[assignment]
 
     code: str = ""

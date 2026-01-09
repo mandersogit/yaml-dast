@@ -1,6 +1,26 @@
 # Changelog
 
 
+## 0.3.1 (2026-01-08)
+
+### Fixed
+- Added missing `_PythonEmitSignal` exception class to `render.py` (was referenced but undefined).
+- Fixed type annotations across codebase for mypy compliance.
+- Fixed test imports to follow project coding standards (qualified imports).
+- Renamed shadowed variables in `expr.py` and `loader.py` to satisfy mypy.
+
+### Changed
+- Makefile now defaults `PYTHON_EXE` to `local.venv/bin/python` instead of requiring it to be set.
+- Extended `make lint` and `make typecheck` to cover `tests/` and `scripts/` directories.
+- Renamed `scripts/commit-helper` to `scripts/commit-helper.py` for tooling compatibility.
+
+### Added
+- Added `types-PyYAML` to dev dependencies for type checking.
+- Added PyPI classifiers, keywords, and project URLs to `pyproject.toml`.
+- Added version validation to `commit-helper.py`: checks that tag `vX.Y.Z` matches `pyproject.toml` version.
+- Added Python 3.11+ version check to `commit-helper.py` with helpful error message.
+
+
 ## 0.3.0 (2026-01-05)
 
 ### Breaking changes

@@ -31,7 +31,7 @@ def _ctx(mark: nodes.SourceMark, node_type: str) -> errors.ErrorContext:
 
 
 def _require_bool(
-    m: dict[str, _typing.Any],
+    m: dict[_typing.Hashable, _typing.Any],
     key: str,
     default: bool,
     *,
@@ -67,42 +67,43 @@ class TemplateLoaderMixin:
 
     @classmethod
     def add_ydst_constructors(cls) -> None:
+        # The add_constructor method comes from yaml.Loader when this mixin is combined with it.
         # Variable tags
-        cls.add_constructor("!var", _construct_var)
+        cls.add_constructor("!var", _construct_var)  # type: ignore[attr-defined]
 
-        cls.add_constructor("!default", _construct_default)
+        cls.add_constructor("!default", _construct_default)  # type: ignore[attr-defined]
 
-        cls.add_constructor("!if", _construct_if)
-        cls.add_constructor("!foreach", _construct_foreach)
+        cls.add_constructor("!if", _construct_if)  # type: ignore[attr-defined]
+        cls.add_constructor("!foreach", _construct_foreach)  # type: ignore[attr-defined]
 
-        cls.add_constructor("!omit", _construct_omit)
+        cls.add_constructor("!omit", _construct_omit)  # type: ignore[attr-defined]
 
-        cls.add_constructor("!expr", _construct_expr)
+        cls.add_constructor("!expr", _construct_expr)  # type: ignore[attr-defined]
 
-        cls.add_constructor("!call", _construct_call)
-        cls.add_constructor("!pipe", _construct_pipe)
+        cls.add_constructor("!call", _construct_call)  # type: ignore[attr-defined]
+        cls.add_constructor("!pipe", _construct_pipe)  # type: ignore[attr-defined]
 
         # Includes:
         #   - !include: load-time include
         #   - !include_rt: render-time include
-        cls.add_constructor("!include", _construct_include)
-        cls.add_constructor("!include_rt", _construct_include_rt)
+        cls.add_constructor("!include", _construct_include)  # type: ignore[attr-defined]
+        cls.add_constructor("!include_rt", _construct_include_rt)  # type: ignore[attr-defined]
 
         # Opt-in power tags:
-        cls.add_constructor("!setdefault", _construct_setdefault)
-        cls.add_constructor("!python", _construct_python)
-        cls.add_constructor("!python_module", _construct_python_module)
+        cls.add_constructor("!setdefault", _construct_setdefault)  # type: ignore[attr-defined]
+        cls.add_constructor("!python", _construct_python)  # type: ignore[attr-defined]
+        cls.add_constructor("!python_module", _construct_python_module)  # type: ignore[attr-defined]
 
 
 def _construct_var(loader: _yaml.Loader, node: _yaml.Node) -> nodes.Var:
     mark = _mark_from_node(loader, node)
     if isinstance(node, _yaml.ScalarNode):
-        name = loader.construct_scalar(node)
-        return nodes.Var(name=str(name), mark=mark)
+        scalar_name = loader.construct_scalar(node)
+        return nodes.Var(name=str(scalar_name), mark=mark)
 
     if isinstance(node, _yaml.MappingNode):
         m = loader.construct_mapping(node, deep=True)  # type: ignore[attr-defined]
-        name = m.get("name")
+        name: _typing.Any = m.get("name")
         if not isinstance(name, str) or not name:
             raise errors.TemplateLoadError(
                 "!var mapping form requires a non-empty 'name' string",
@@ -273,12 +274,12 @@ def _construct_expr(loader: _yaml.Loader, node: _yaml.Node) -> nodes.Expr:
     mark = _mark_from_node(loader, node)
 
     if isinstance(node, _yaml.ScalarNode):
-        expr = loader.construct_scalar(node)
-        return nodes.Expr(expr=str(expr), mark=mark)
+        scalar_expr = loader.construct_scalar(node)
+        return nodes.Expr(expr=str(scalar_expr), mark=mark)
 
     if isinstance(node, _yaml.MappingNode):
         m = loader.construct_mapping(node, deep=True)  # type: ignore[attr-defined]
-        expr = m.get("expr")
+        expr: _typing.Any = m.get("expr")
         if not isinstance(expr, str) or not expr:
             raise errors.TemplateLoadError(
                 "!expr mapping form requires non-empty 'expr'",
@@ -295,12 +296,12 @@ def _construct_call(loader: _yaml.Loader, node: _yaml.Node) -> nodes.Call:
     mark = _mark_from_node(loader, node)
 
     if isinstance(node, _yaml.ScalarNode):
-        fn = loader.construct_scalar(node)
-        return nodes.Call(fn=str(fn), mark=mark)
+        scalar_fn = loader.construct_scalar(node)
+        return nodes.Call(fn=str(scalar_fn), mark=mark)
 
     if isinstance(node, _yaml.MappingNode):
         m = loader.construct_mapping(node, deep=True)  # type: ignore[attr-defined]
-        fn = m.get("fn") or m.get("name")
+        fn: _typing.Any = m.get("fn") or m.get("name")
         if fn is None:
             raise errors.TemplateLoadError("!call requires 'fn'", ctx=_ctx(mark, "Call"))
 
@@ -349,10 +350,10 @@ def _construct_include(loader: _yaml.Loader, node: _yaml.Node) -> _typing.Any:
 
     # Scalar form: !include "file.yaml" (load-time include).
     if isinstance(node, _yaml.ScalarNode):
-        target = loader.construct_scalar(node)
-        if not isinstance(target, str) or not target:
+        scalar_target = loader.construct_scalar(node)
+        if not isinstance(scalar_target, str) or not scalar_target:
             raise errors.TemplateLoadError("!include requires a non-empty string target", ctx=_ctx(mark, "Include"))
-        return _resolve_load_time_include(loader, target, mark)
+        return _resolve_load_time_include(loader, scalar_target, mark)
 
     if isinstance(node, _yaml.MappingNode):
         m = loader.construct_mapping(node, deep=True)  # type: ignore[attr-defined]
@@ -363,7 +364,7 @@ def _construct_include(loader: _yaml.Loader, node: _yaml.Node) -> _typing.Any:
                 ctx=_ctx(mark, "Include"),
             )
 
-        target = m.get("target") or m.get("path") or m.get("file")
+        target: _typing.Any = m.get("target") or m.get("path") or m.get("file")
         if target is None:
             raise errors.TemplateLoadError("!include mapping form requires 'target'", ctx=_ctx(mark, "Include"))
 
@@ -386,17 +387,17 @@ def _construct_include_rt(loader: _yaml.Loader, node: _yaml.Node) -> nodes.Inclu
     mark = _mark_from_node(loader, node)
 
     if isinstance(node, _yaml.ScalarNode):
-        target = loader.construct_scalar(node)
-        if not isinstance(target, str) or not target:
+        scalar_target = loader.construct_scalar(node)
+        if not isinstance(scalar_target, str) or not scalar_target:
             raise errors.TemplateLoadError(
                 "!include_rt requires a non-empty string target",
                 ctx=_ctx(mark, "IncludeRuntime"),
             )
-        return nodes.IncludeRuntime(target=target, mark=mark)
+        return nodes.IncludeRuntime(target=scalar_target, mark=mark)
 
     if isinstance(node, _yaml.MappingNode):
         m = loader.construct_mapping(node, deep=True)  # type: ignore[attr-defined]
-        target = m.get("target") or m.get("path") or m.get("file")
+        target: _typing.Any = m.get("target") or m.get("path") or m.get("file")
         if target is None:
             raise errors.TemplateLoadError("!include_rt requires 'target'", ctx=_ctx(mark, "IncludeRuntime"))
         required = _require_bool(m, "required", True, mark=mark, node_type="IncludeRuntime")
@@ -464,17 +465,17 @@ def _construct_python(loader: _yaml.Loader, node: _yaml.Node) -> nodes.Python:
     mark = _mark_from_node(loader, node)
 
     if isinstance(node, _yaml.ScalarNode):
-        code = loader.construct_scalar(node)
-        if not isinstance(code, str) or not code.strip():
+        scalar_code = loader.construct_scalar(node)
+        if not isinstance(scalar_code, str) or not scalar_code.strip():
             raise errors.TemplateLoadError(
                 "!python requires a non-empty code string",
                 ctx=_ctx(mark, "Python"),
             )
-        return nodes.Python(code=code, mark=mark)
+        return nodes.Python(code=scalar_code, mark=mark)
 
     if isinstance(node, _yaml.MappingNode):
         m = loader.construct_mapping(node, deep=True)  # type: ignore[attr-defined]
-        code = m.get("code") or m.get("python") or m.get("py")
+        code: _typing.Any = m.get("code") or m.get("python") or m.get("py")
         if not isinstance(code, str) or not code.strip():
             raise errors.TemplateLoadError(
                 "!python mapping form requires a non-empty 'code' string",
@@ -505,13 +506,13 @@ def _construct_python_module(loader: _yaml.Loader, node: _yaml.Node) -> nodes.Py
 
     if isinstance(node, _yaml.MappingNode):
         m = loader.construct_mapping(node, deep=True)  # type: ignore[attr-defined]
-        code = m.get("code") or m.get("python") or m.get("py")
-        if not isinstance(code, str) or not code.strip():
+        code_val: _typing.Any = m.get("code") or m.get("python") or m.get("py")
+        if not isinstance(code_val, str) or not code_val.strip():
             raise errors.TemplateLoadError(
                 "!python_module mapping form requires a non-empty 'code' string",
                 ctx=_ctx(mark, "PythonModule"),
             )
-        return nodes.PythonModule(code=code, mark=mark)
+        return nodes.PythonModule(code=code_val, mark=mark)
 
     raise errors.TemplateLoadError(
         "Unsupported YAML node form for !python_module",
