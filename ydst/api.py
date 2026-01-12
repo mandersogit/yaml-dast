@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os as _os
 import pathlib as _pathlib
 import typing as _typing
 
@@ -8,76 +9,60 @@ import yaml as _yaml
 import ydst.engine as engine_mod
 import ydst.include as include_mod
 import ydst.render as render_mod
-import ydst.registry as registry_mod
 
 
-SourceInput = str | bytes | _pathlib.Path | _typing.IO[str]
-
-
-def load_template(
-    source: SourceInput,
+def full_engine(
     *,
-    engine: engine_mod.TemplateEngine | None = None,
-    includes: include_mod.IncludeResolver | None = None,
-    source_name: str | None = None,
-) -> _typing.Any:
-    """Load a template using a default engine unless one is provided.
+    include_paths: _typing.Sequence[str | _pathlib.Path] | None = None,
+    include_cwd: bool = True,
+) -> engine_mod.TemplateEngine:
+    """Create a TemplateEngine with all features enabled.
 
-    Semantics
-    ---------
-    `ydst.load_template` forwards to :meth:`TemplateEngine.load_template`.
+    For trusted environments where template authors are trusted.
 
-    - If `source` is a `str`, it is treated as a **filesystem path**.
-    - If you want to parse YAML text from a Python string, use :func:`load_template_text`.
+    Enables:
+      - !python and !python_module tags
+      - !call and !include_rt
+      - Attribute/method access and function calls in !expr
+      - Callable pipe stages
+      - Load-time !include
+      - Absolute paths in includes
+
+    Args:
+        include_paths: Directories to search for includes.
+        include_cwd: If True (default), add current working directory to include paths.
+
+    Example:
+        # Full power, one line
+        engine = ydst.api.full_engine()
+
+        # Or set as default for the whole process
+        ydst.set_default_engine(ydst.api.full_engine())
     """
+    paths: list[str | _pathlib.Path] = list(include_paths or [])
+    if include_cwd:
+        paths.insert(0, _os.getcwd())
 
-    eng = engine or engine_mod.TemplateEngine(include_resolver=includes)
-    return eng.load_template(source, source_name=source_name)
+    include_resolver = include_mod.FileIncludeResolver(
+        search_paths=paths,
+        allow_absolute=True,
+        enforce_roots=False,
+    )
 
+    options = render_mod.RenderOptions(
+        mode="trusted",
+        allow_python=True,
+        allow_python_module=True,
+        allow_callable_pipe_stages=True,
+        allow_method_calls_in_expr=True,
+        allow_private_attributes_in_expr=True,
+    )
 
-def load_template_text(
-    text: str,
-    *,
-    engine: engine_mod.TemplateEngine | None = None,
-    includes: include_mod.IncludeResolver | None = None,
-    source_name: str | None = None,
-) -> _typing.Any:
-    """Load a template from a YAML text string."""
-
-    eng = engine or engine_mod.TemplateEngine(include_resolver=includes)
-    return eng.load_template_text(text, source_name=source_name)
-
-
-def load_template_file(
-    path: str | _pathlib.Path,
-    *,
-    engine: engine_mod.TemplateEngine | None = None,
-    includes: include_mod.IncludeResolver | None = None,
-) -> _typing.Any:
-    """Load a template from a filesystem path."""
-
-    eng = engine or engine_mod.TemplateEngine(include_resolver=includes)
-    return eng.load_template_file(path)
-
-
-def render(
-    template: _typing.Any,
-    context: _typing.Mapping[str, _typing.Any] | None = None,
-    *,
-    registry: registry_mod.FunctionRegistry | None = None,
-    options: render_mod.RenderOptions | None = None,
-    engine: engine_mod.TemplateEngine | None = None,
-    include_resolver: include_mod.IncludeResolver | None = None,
-) -> _typing.Any:
-    """Render a template using a default engine unless provided."""
-
-    eng = engine or engine_mod.TemplateEngine(include_resolver=include_resolver)
-    return eng.render(
-        template,
-        context=dict(context or {}),
-        registry=registry,
-        options=options,
+    return engine_mod.TemplateEngine(
         include_resolver=include_resolver,
+        allow_load_time_includes=True,
+        max_include_depth=None,  # No limit
+        options=options,
     )
 
 
@@ -108,21 +93,3 @@ def safe_engine(
         max_include_depth=max_include_depth,
         allow_load_time_includes=allow_load_time_includes,
     )
-
-
-def safe_render(
-    template: _typing.Any,
-    context: _typing.Mapping[str, _typing.Any] | None = None,
-    *,
-    engine: engine_mod.TemplateEngine | None = None,
-    include_paths: _typing.Sequence[str | _pathlib.Path] | None = None,
-    registry: registry_mod.FunctionRegistry | None = None,
-    options: render_mod.RenderOptions | None = None,
-) -> _typing.Any:
-    """Render with defensive defaults (locked-down mode, strict by default)."""
-
-    eng = engine or safe_engine(include_paths=include_paths)
-    opts = options or render_mod.RenderOptions(mode="locked_down", strict=True)
-
-    reg = registry if registry is not None else registry_mod.safe_registry()
-    return eng.render(template, context=dict(context or {}), registry=reg, options=opts)
