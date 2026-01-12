@@ -293,7 +293,7 @@ class SetDefault(TemplateNode):
       - The node itself renders to OMIT (so it can be used as "bookkeeping" without
         appearing in output).
 
-    This tag is disabled by default; enable it with `RenderOptions(allow_setdefault=True)`.
+    This tag is always enabled (it cannot override caller-provided context values).
     """
 
     __hash__ = None  # type: ignore[assignment]

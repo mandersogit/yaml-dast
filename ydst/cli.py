@@ -284,7 +284,7 @@ def build_parser() -> _argparse.ArgumentParser:
         help="Treat string pipe stages as literal values (do not call registry functions)",
     )
 
-    # Power tags (disabled by default; setdefault is always enabled)
+    # Power tags (disabled by default)
     r.add_argument("--allow-python", action="store_true", help="Enable !python (trusted templates only)")
     r.add_argument("--allow-python-module", action="store_true", help="Enable !python_module (trusted templates only)")
     r.add_argument(

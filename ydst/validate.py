@@ -12,38 +12,6 @@ if _typing.TYPE_CHECKING:
     import ydst.template as _template_mod
 
 
-def collect_variables(template: _template_mod.Template) -> set[str]:
-    """Collect variable names referenced by !var nodes."""
-    out: set[str] = set()
-
-    def walk(x: _typing.Any) -> None:
-        if isinstance(x, nodes.Var):
-            out.add(x.name)
-            if x.default is not nodes.UNSET:
-                walk(x.default)
-            return
-        if isinstance(x, nodes.TemplateNode):
-            for _, v in nodes.iter_template_node_items(x):
-                walk(v)
-            return
-        if isinstance(x, _abc.Mapping):
-            for k, v in x.items():
-                walk(k)
-                walk(v)
-            return
-        if isinstance(x, (set, frozenset)):
-            for v in x:
-                walk(v)
-            return
-        if isinstance(x, _abc.Sequence) and not isinstance(x, (str, bytes, bytearray)):
-            for v in x:
-                walk(v)
-            return
-
-    walk(template.root)
-    return out
-
-
 def _validate_mapping_keys(
     m: _abc.Mapping[_typing.Any, _typing.Any],
     *,
@@ -112,8 +80,6 @@ def validate_template(
                 raise errors.TemplateValidationError("!call is disabled by render options", ctx=ctx)
             if isinstance(x, nodes.IncludeRuntime) and not opts.allow_includes:
                 raise errors.TemplateValidationError("!include_rt is disabled by render options", ctx=ctx)
-            if isinstance(x, nodes.SetDefault) and not opts.allow_setdefault:
-                raise errors.TemplateValidationError("!setdefault is disabled by render options", ctx=ctx)
             if isinstance(x, nodes.Python) and not opts.allow_python:
                 raise errors.TemplateValidationError("!python is disabled by render options", ctx=ctx)
             if isinstance(x, nodes.PythonModule) and not opts.allow_python_module:

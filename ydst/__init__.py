@@ -44,14 +44,6 @@ RenderOptions = _render_mod.RenderOptions
 safe_engine = _api_mod.safe_engine
 
 # -----------------------------------------------------------------------------
-# One-shot rendering (load + render in one call)
-# -----------------------------------------------------------------------------
-
-render_text = _template_mod.render_text
-render_path = _template_mod.render_path
-render_stream = _template_mod.render_stream
-
-# -----------------------------------------------------------------------------
 # Module-level default engine management
 # -----------------------------------------------------------------------------
 
@@ -92,10 +84,6 @@ __all__ = [
     "TemplateEngine",
     "RenderOptions",
     "safe_engine",
-    # One-shot rendering
-    "render_text",
-    "render_path",
-    "render_stream",
     # Engine management
     "get_default_engine",
     "set_default_engine",

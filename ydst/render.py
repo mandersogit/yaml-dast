@@ -82,7 +82,7 @@ class RenderOptions:
       - trusted: defaults (full power, but still structured)
       - expr_safe: disable attribute access and function calls in !expr
       - locked_down: disable !call, !include_rt, !python, !python_module;
-        and apply expr_safe restrictions (note: !setdefault is always allowed)
+        and apply expr_safe restrictions
     """
 
     # General
@@ -105,8 +105,7 @@ class RenderOptions:
     # Error handling
     wrap_exceptions: bool = True
 
-    # Opt-in power tags (except setdefault which is always allowed)
-    allow_setdefault: bool = True  # Safe: cannot override caller-provided values
+    # Opt-in power tags
     allow_python: bool = False
     allow_python_module: bool = False
 
@@ -146,7 +145,7 @@ class RenderOptions:
             opts.allow_pipe_registry_calls = False
             opts.allow_callable_pipe_stages = False
 
-            # Power tags are disabled in locked-down mode (except setdefault which is safe).
+            # Power tags are disabled in locked-down mode.
             opts.allow_python = False
             opts.allow_python_module = False
 
@@ -965,12 +964,6 @@ def _render_include_rt(node: IncludeRuntime, ctx: RenderContext) -> _typing.Any:
         ctx.include_stack.pop()
 
 def _render_setdefault(node: SetDefault, ctx: RenderContext) -> _typing.Any:
-    if not ctx.options.allow_setdefault:
-        raise RenderError(
-            "!setdefault is disabled (enable with RenderOptions(allow_setdefault=True))",
-            ctx=ErrorContext(path=tuple(ctx.path), mark=node.mark, node_type="SetDefault"),
-        )
-
     for name, default_template in node.defaults.items():
         if not isinstance(name, str) or not name:
             raise RenderError(
