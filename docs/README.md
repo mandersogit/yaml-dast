@@ -6,7 +6,8 @@ ydst is a Python library that loads YAML into a **template object graph** (plain
 
 ## Start here
 
-- **Usage & API overview:** [`USAGE.md`](USAGE.md)
+- **Usage guide:** [`USAGE.md`](USAGE.md)
+- **API reference:** [`API.md`](API.md)
 - **Tag reference:** [`TAGS.md`](TAGS.md)
 - **Expression language & safety model:** [`EXPRESSIONS.md`](EXPRESSIONS.md)
 - **Function registry:** [`REGISTRY.md`](REGISTRY.md)

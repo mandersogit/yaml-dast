@@ -63,6 +63,20 @@ result = tmpl.render(context={"db_host": "localhost"})
 # → {"database": {"host": "localhost", "port": 5432}}
 ```
 
+### Inspecting templates
+
+Templates expose analysis properties for static introspection:
+
+```python
+tmpl = ydst.Template.from_text("""
+name: !var user_name
+role: !default [!var role, "viewer"]
+""")
+
+print(tmpl.variables)           # {'user_name', 'role'}
+print(tmpl.required_variables)  # {'user_name'}  (role has a default)
+```
+
 ### Custom engine (advanced)
 
 For includes, custom options, or custom function registries:
@@ -76,6 +90,17 @@ engine = ydst.TemplateEngine(
 
 tmpl = engine.load_template_path("config.yaml")
 result = tmpl.render(context={"env": "production"})
+```
+
+### Full-power engine (trusted environments)
+
+For internal tooling where you control the templates:
+
+```python
+import ydst.api as api
+
+engine = api.full_engine()  # Enables !python, !call, attribute access, etc.
+tmpl = engine.load_template_path("internal-config.yaml")
 ```
 
 ## Loading templates

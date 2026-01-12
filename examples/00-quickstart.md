@@ -7,29 +7,29 @@ date: 2026-01-09
 
 This example shows the most common ways to use ydst from Python.
 
-## 1. One-shot rendering
-
-For quick, one-off template rendering:
+## 1. Load and render
 
 ```python
 import ydst
 
-# Render YAML text directly
-result = ydst.render_text("""
+# Load template from text
+tmpl = ydst.Template.from_text("""
 user:
   name: !var name
   role: !var role
-""", context={"name": "Alice", "role": "admin"})
+""")
 
+# Render with context
+result = tmpl.render(context={"name": "Alice", "role": "admin"})
 print(result)
 # {'user': {'name': 'Alice', 'role': 'admin'}}
 ```
 
-Also available: `ydst.render_path()` and `ydst.render_stream()`.
+Also available: `Template.from_path()` and `Template.from_stream()`.
 
 ## 2. Template reuse
 
-When rendering the same template multiple times with different contexts:
+The same template can be rendered multiple times with different contexts:
 
 ```python
 import ydst
@@ -41,8 +41,6 @@ tmpl = ydst.Template.from_path("01-basic.yaml")
 alice = tmpl.render(context={"message": "Hello, Alice!", "enabled": True})
 bob = tmpl.render(context={"message": "Hello, Bob!", "enabled": False})
 ```
-
-Also available: `Template.from_text()` and `Template.from_stream()`.
 
 ## 3. Custom engine configuration
 

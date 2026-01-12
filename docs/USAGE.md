@@ -63,28 +63,9 @@ import ydst
 engine = ydst.TemplateEngine(base_loader=yaml.FullLoader)
 ```
 
-## Module-level convenience functions
+## Loading and Rendering Templates
 
-For one-shot loading and rendering (when you don't need to keep a reference to the template):
-
-```python
-import ydst
-
-# One-shot: load from text and render
-result = ydst.render_text(
-    "temperature: !var temperature",
-    context={"temperature": 0.2},
-)
-
-# One-shot: load from path and render
-result = ydst.render_path("template.yaml", context={"temperature": 0.2})
-```
-
-These use a default engine. To customize engine settings, use `TemplateEngine` directly.
-
-### Template class for reusable templates
-
-When you want to render the same template multiple times:
+Load templates with `Template.from_text()`, `Template.from_path()`, or `Template.from_stream()`, then call `.render()`:
 
 ```python
 import ydst
@@ -101,6 +82,22 @@ Template classmethods:
 - `Template.from_text(text)` — from YAML string
 - `Template.from_path(path)` — from filesystem path
 - `Template.from_stream(stream)` — from file-like object
+
+### Template analysis properties
+
+Templates expose cached properties for static introspection:
+
+```python
+tmpl = ydst.Template.from_text("""
+user: !var name
+role: !default [!var role, "viewer"]
+""")
+
+tmpl.variables            # {'name', 'role'} - all !var references
+tmpl.required_variables   # {'name'} - vars without defaults
+```
+
+See [`API.md`](API.md) for the full list of analysis properties.
 
 ### Security-oriented convenience profile
 
@@ -121,6 +118,27 @@ result = tmpl.render_safe(context={"temperature": 0.2})
 This is intentionally conservative. If you need more capability, instantiate
 `TemplateEngine` and `RenderOptions` directly and be explicit about which features you
 enable.
+
+### Full-featured engine for trusted environments
+
+For trusted environments (internal tooling, templates you control), `ydst.api.full_engine()`
+enables all features:
+
+```python
+import ydst
+import ydst.api as api
+
+# Full power engine
+engine = api.full_engine()
+tmpl = engine.load_template_path("config.yaml")
+
+# Or set as the module default
+ydst.set_default_engine(api.full_engine())
+tmpl = ydst.Template.from_path("config.yaml")  # uses full_engine
+```
+
+This enables `!python`, `!python_module`, attribute/method access in `!expr`, callable
+pipe stages, and unrestricted includes.
 
 ## Render options
 
