@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import dataclasses as _dataclasses
+import functools as _functools
 import pathlib as _pathlib
 import threading as _threading
 import typing as _typing
 
-import ydst.nodes as _nodes_mod
+import ydst.analysis as analysis
+import ydst.nodes as nodes
+import ydst.validate as validate
 
 if _typing.TYPE_CHECKING:
     import ydst.engine as _engine_mod
@@ -59,13 +62,9 @@ def _summarize_root(root: _typing.Any) -> str:
     return f"<{type_name}>"
 
 
-@_dataclasses.dataclass(frozen=True)
+@_dataclasses.dataclass
 class Template:
     """A loaded template bound to an engine.
-
-    Template is immutable by convention. The dataclass is frozen (attributes
-    cannot be reassigned), but the `root` contents may be mutable Python
-    objects (dicts, lists). Users should not mutate root contents.
 
     The same Template can be rendered multiple times with different contexts.
 
@@ -75,9 +74,104 @@ class Template:
         source_name: Optional name for error messages (e.g., filename)
     """
 
-    root: _nodes_mod.NodeTree
+    root: nodes.NodeTree
     engine: _engine_mod.TemplateEngine
     source_name: str | None = None
+
+    # --- Cached analysis properties ---
+
+    @_functools.cached_property
+    def full_analysis(self) -> analysis.FullAnalysis:
+        """Comprehensive single-pass analysis (cached)."""
+        return analysis.FullAnalysis.from_template(self)
+
+    # --- Convenience properties derived from full_analysis ---
+
+    @property
+    def variables(self) -> set[str]:
+        """Variable names referenced by !var nodes."""
+        return self.full_analysis.variables
+
+    @property
+    def required_variables(self) -> set[str]:
+        """Variable names that must be provided (no default value)."""
+        return self.full_analysis.required_variables
+
+    @property
+    def expressions(self) -> set[str]:
+        """Expression strings referenced by !expr nodes."""
+        return self.full_analysis.expressions
+
+    @property
+    def calls(self) -> set[str]:
+        """Explicitly named registry function calls (!call)."""
+        return self.full_analysis.calls
+
+    @property
+    def includes_rt(self) -> set[str]:
+        """Render-time include targets (!include_rt)."""
+        return self.full_analysis.includes_rt
+
+    @property
+    def pipe_stage_strings(self) -> set[str]:
+        """Literal string stages used in !pipe nodes."""
+        return self.full_analysis.pipe_stage_strings
+
+    @property
+    def setdefault_names(self) -> set[str]:
+        """Variable names established via !setdefault."""
+        return self.full_analysis.setdefault_names
+
+    @property
+    def python_block_count(self) -> int:
+        """Count of !python blocks."""
+        return self.full_analysis.python_block_count
+
+    @property
+    def python_module_count(self) -> int:
+        """Count of !python_module blocks."""
+        return self.full_analysis.python_module_count
+
+    @property
+    def has_dynamic_calls(self) -> bool:
+        """Whether any !call targets are templated (not literal strings)."""
+        return self.full_analysis.has_dynamic_calls
+
+    @property
+    def has_dynamic_includes(self) -> bool:
+        """Whether any !include_rt targets are templated (not literal strings)."""
+        return self.full_analysis.has_dynamic_includes
+
+    def analyze_dependencies_with_registry(
+        self,
+        registry: _registry_mod.FunctionRegistry,
+    ) -> analysis.Dependencies:
+        """Full dependency analysis with registry-aware pipe resolution.
+
+        Use this when you need `pipe_registry_functions` populated.
+        Not cached because result depends on the registry parameter.
+        """
+        return analysis.analyze_dependencies(self, registry=registry)
+
+    def validate(
+        self,
+        *,
+        options: _render_mod.RenderOptions | None = None,
+        registry: _registry_mod.FunctionRegistry | None = None,
+        allow_non_string_mapping_keys: bool = False,
+    ) -> None:
+        """Validate template structure.
+
+        Raises TemplateValidationError if validation fails.
+        """
+        validate.validate_template(
+            self,
+            options=options,
+            registry=registry,
+            allow_non_string_mapping_keys=allow_non_string_mapping_keys,
+        )
+
+    # --- Core methods ---
 
     def __repr__(self) -> str:
         """Show source_name and root type/size, not full root."""
@@ -203,56 +297,5 @@ class Template:
         if engine is None:
             engine = get_default_engine()
         return engine.load_template_stream(stream, source_name=source_name)
-
-
-# Convenience one-shot rendering functions
-
-
-def render_text(
-    source: str,
-    context: dict[str, _typing.Any] | None = None,
-    *,
-    engine: _engine_mod.TemplateEngine | None = None,
-    options: _render_mod.RenderOptions | None = None,
-    registry: _registry_mod.FunctionRegistry | None = None,
-) -> _typing.Any:
-    """One-shot render: load YAML text and render in a single call.
-
-    For repeated rendering of the same template, use Template.from_text()
-    and call .render() multiple times.
-
-    Example:
-        result = ydst.render_text("x: !var foo", context={"foo": 42})
-    """
-    tmpl = Template.from_text(source, engine=engine)
-    return tmpl.render(context=context, options=options, registry=registry)
-
-
-def render_path(
-    path: str | _pathlib.Path,
-    context: dict[str, _typing.Any] | None = None,
-    *,
-    engine: _engine_mod.TemplateEngine | None = None,
-    options: _render_mod.RenderOptions | None = None,
-    registry: _registry_mod.FunctionRegistry | None = None,
-) -> _typing.Any:
-    """One-shot render from a filesystem path."""
-    tmpl = Template.from_path(path, engine=engine)
-    return tmpl.render(context=context, options=options, registry=registry)
-
-
-def render_stream(
-    stream: _typing.IO[str],
-    context: dict[str, _typing.Any] | None = None,
-    *,
-    engine: _engine_mod.TemplateEngine | None = None,
-    options: _render_mod.RenderOptions | None = None,
-    registry: _registry_mod.FunctionRegistry | None = None,
-    source_name: str | None = None,
-) -> _typing.Any:
-    """One-shot render from an IO stream."""
-    tmpl = Template.from_stream(stream, engine=engine, source_name=source_name)
-    return tmpl.render(context=context, options=options, registry=registry)
-
 
 
