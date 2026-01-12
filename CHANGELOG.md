@@ -1,6 +1,52 @@
 # Changelog
 
 
+## 0.6.0 (Unreleased)
+
+### Breaking changes
+
+- **Removed one-shot rendering functions**: Use `Template.from_*()` + `.render()` instead.
+  - `ydst.render_text()` — use `Template.from_text(yaml).render(context=...)`
+  - `ydst.render_path()` — use `Template.from_path(path).render(context=...)`
+  - `ydst.render_stream()` — use `Template.from_stream(io).render(context=...)`
+  - Public API trimmed from 19 → 15 exports.
+
+- **Removed `RenderOptions.allow_setdefault`**: The `!setdefault` tag is now always enabled.
+  It's safe by design (cannot override caller-provided context values).
+
+- **`Template` is no longer frozen**: Changed from `frozen=True` dataclass to allow caching
+  of analysis properties. The `root` and `engine` attributes should still be treated as immutable.
+
+- **Moved `collect_variables` and `collect_required_variables`** from `ydst.validate` to `ydst.analysis`.
+
+### Added
+
+- **Template analysis properties** (cached via single-pass `full_analysis`):
+  - `tmpl.variables` — variable names referenced by `!var` nodes
+  - `tmpl.required_variables` — variables without defaults
+  - `tmpl.expressions` — `!expr` strings
+  - `tmpl.calls` — `!call` function names
+  - `tmpl.includes_rt` — `!include_rt` targets
+  - `tmpl.pipe_stage_strings` — literal pipe stages
+  - `tmpl.setdefault_names` — `!setdefault` variable names
+  - `tmpl.python_block_count` — count of `!python` blocks
+  - `tmpl.python_module_count` — count of `!python_module` blocks
+  - `tmpl.has_dynamic_calls` — whether any `!call` targets are templated
+  - `tmpl.has_dynamic_includes` — whether any `!include_rt` targets are templated
+
+- **`FullAnalysis` dataclass** (`ydst.analysis.FullAnalysis`): Comprehensive single-pass
+  template analysis with all static analysis data, including iteration counts and depth metrics.
+
+- **`full_engine()` factory** (`ydst.api.full_engine`): Create an engine with all features enabled
+  for trusted environments. Enables `!python`, `!call`, `!include_rt`, attribute access in `!expr`, etc.
+
+- **`tmpl.validate(...)`** method on Template for convenient validation.
+
+### Changed
+
+- Documentation updated to reflect API simplification and new analysis properties.
+
+
 ## 0.5.0 (2026-01-09)
 
 ### Breaking changes
