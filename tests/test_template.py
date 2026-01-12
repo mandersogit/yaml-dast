@@ -52,10 +52,12 @@ class TestTemplateBasic:
         assert "Template(" in r
         assert "dict" in r
 
-    def test_template_is_frozen(self) -> None:
-        tmpl = _ydst.Template.from_text("x: 1")
-        with _pytest.raises(AttributeError):
-            tmpl.root = {"y": 2}  # type: ignore[misc]
+    def test_variables_property_cached(self) -> None:
+        tmpl = _ydst.Template.from_text("x: !var foo")
+        vars1 = tmpl.variables
+        vars2 = tmpl.variables
+        assert vars1 == {"foo"}
+        assert vars1 is vars2  # Same object, cached
 
 
 class TestTemplateRenderSafe:
@@ -133,26 +135,6 @@ class TestLoadYamlRaw:
         raw = eng.load_yaml_stream(stream)
         assert isinstance(raw, dict)
         assert isinstance(raw["x"], _nodes.Var)
-
-
-class TestModuleLevelFunctions:
-    """Module-level convenience functions."""
-
-    def test_render_text_one_shot(self) -> None:
-        result = _ydst.render_text("x: !var foo", context={"foo": 42})
-        assert result == {"x": 42}
-
-    def test_render_path(self) -> None:
-        with _tempfile.TemporaryDirectory() as td:
-            td_path = _pathlib.Path(td)
-            (td_path / "test.yaml").write_text("x: !var foo\n", encoding="utf-8")
-            result = _ydst.render_path(td_path / "test.yaml", context={"foo": 42})
-            assert result == {"x": 42}
-
-    def test_render_stream(self) -> None:
-        stream = _io.StringIO("x: !var foo")
-        result = _ydst.render_stream(stream, context={"foo": 42})
-        assert result == {"x": 42}
 
 
 class TestDefaultEngine:

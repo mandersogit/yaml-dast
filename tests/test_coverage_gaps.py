@@ -36,7 +36,7 @@ class TestAnalysis:
 
     def test_collect_variables(self) -> None:
         tmpl = _ydst.Template.from_text("x: !var foo\ny: !var bar")
-        vars_found = _validate.collect_variables(tmpl)
+        vars_found = _analysis.collect_variables(tmpl)
         assert "foo" in vars_found
         assert "bar" in vars_found
 

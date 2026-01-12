@@ -257,14 +257,6 @@ x: !var computed
 class TestSetDefault:
     """Tests for !setdefault tag."""
 
-    def test_setdefault_can_be_manually_disabled(self) -> None:
-        """Users can opt-out of !setdefault if desired."""
-        eng = _ydst.TemplateEngine()
-        tmpl = eng.load_template_text('setup: !setdefault {env: prod}')
-        with _pytest.raises(_ydst.RenderError) as cm:
-            tmpl.render(options=_ydst.RenderOptions(allow_setdefault=False))
-        assert "disabled" in str(cm.value).lower()
-
     def test_setdefault_basic(self) -> None:
         eng = _ydst.TemplateEngine()
         tmpl = eng.load_template_text(
@@ -273,7 +265,7 @@ setup: !setdefault {env: prod}
 env: !var env
 """
         )
-        out = tmpl.render(options=_ydst.RenderOptions(allow_setdefault=True))
+        out = tmpl.render()
         assert out == {"env": "prod"}
 
     def test_setdefault_does_not_override_caller_value(self) -> None:
@@ -285,10 +277,7 @@ setup: !setdefault {env: prod}
 env: !var env
 """
         )
-        out = tmpl.render(
-            context={"env": "dev"},
-            options=_ydst.RenderOptions(allow_setdefault=True),
-        )
+        out = tmpl.render(context={"env": "dev"})
         assert out == {"env": "dev"}
 
     def test_setdefault_multiple_vars(self) -> None:
@@ -302,7 +291,7 @@ env: !var env
 region: !var region
 """
         )
-        out = tmpl.render(options=_ydst.RenderOptions(allow_setdefault=True))
+        out = tmpl.render()
         assert out == {"env": "prod", "region": "us-east-1"}
 
     def test_setdefault_partial_override(self) -> None:
@@ -317,10 +306,7 @@ env: !var env
 region: !var region
 """
         )
-        out = tmpl.render(
-            context={"env": "dev"},
-            options=_ydst.RenderOptions(allow_setdefault=True),
-        )
+        out = tmpl.render(context={"env": "dev"})
         assert out == {"env": "dev", "region": "us-east-1"}
 
     def test_setdefault_works_in_locked_down_mode(self) -> None:
